@@ -1,20 +1,26 @@
 # mermaid-layout-circular
 
-A circular layout engine for mermaid flowcharts: the nodes of a cycle
-placed on a circle, edges drawn as arcs, using mermaid's pluggable
-layout registry. Destined to be a dependency of andrewbroz.net, where
-diagram fences in notes render at sync time (see that repo's
-2026-08-08 mermaid design); dagre draws a cycle as a bent ladder, and
-this package is the repair.
+A circular layout engine for [mermaid](https://mermaid.js.org) flowcharts.
+Write an ordinary flowchart, set `layout: circular`, and the nodes are
+placed evenly around a circle with the edges drawn as arcs of that same
+circle. The rest of the flowchart language keeps working: node shapes,
+edge labels, css classes, and `look: handDrawn`.
 
-This file is the one door in, for every reader: person or model.
-`CLAUDE.md` is a symlink to it. Decisions are logged in
-`docs/DECISIONS.md` (append-only, dated).
+Mermaid's default engine, dagre, is built for hierarchies. Given a cycle,
+it breaks the loop, lays the nodes out in a line, and routes one long
+arrow back around the outside. The result never looks like a cycle. This
+package addresses the request in
+[mermaid-js/mermaid#3228](https://github.com/mermaid-js/mermaid/issues/3228),
+open since 2022: cycles should look like cycles.
+
+`CLAUDE.md` is a symlink to this file, so human and model readers see the
+same document. Design decisions are logged in `docs/DECISIONS.md`, which
+is append-only and dated.
 
 ## Usage
 
-The layout registers under the name `circular`, selected per diagram
-in frontmatter — the same contract as `@mermaid-js/layout-elk`:
+Select the layout per diagram in frontmatter, the same way
+`@mermaid-js/layout-elk` works:
 
 ```
 ---
@@ -25,6 +31,8 @@ flowchart LR
   A --> B --> C --> D --> A
 ```
 
+Register the layout once, before rendering:
+
 ```ts
 import mermaid from 'mermaid';
 import circularLayouts from 'mermaid-layout-circular';
@@ -32,62 +40,90 @@ import circularLayouts from 'mermaid-layout-circular';
 mermaid.registerLayoutLoaders(circularLayouts);
 ```
 
-The full flowchart language keeps working — node shapes, edge labels,
-classes, `look: handDrawn` — only placement changes. Non-flowchart
-diagrams are out of scope; they own their layouts. Subgraphs are not
-circular-aware yet: a cluster is skipped with a loud warning.
+Subgraphs are not supported yet. A diagram containing one still renders,
+but the subgraph box is skipped and a warning is logged. Diagram types
+other than flowcharts are out of scope, since each one owns its layout.
 
-## Knobs
+## Options
 
-Mermaid's config schema has no slot for layout-engine options, so the
-knobs are set programmatically, beside registration:
+Mermaid's config schema has no slot for layout engine options, so the
+knobs are set in code, next to registration:
 
 ```ts
 import { setCircularLayoutOptions } from 'mermaid-layout-circular';
+
 setCircularLayoutOptions({ spacing: 60, bow: 0.4 });
 ```
 
-The knobs and their defaults live in `CircularLayoutOptions` and
-`defaults` (`src/layout.ts`); every default was chosen against the
-visual record in `trials/`, and the verdicts are logged in
-`docs/DECISIONS.md`. `flowchart.nodeSpacing` from mermaid's own
-config seeds `spacing` when no knob overrides it.
+The available options and their defaults live in `CircularLayoutOptions`
+and `defaults` in `src/layout.ts`. Every default was chosen by rendering
+the alternatives and looking at them. The screenshots that drove those
+choices are committed in `trials/`, and the verdicts are recorded in
+`docs/DECISIONS.md`. When no option overrides it, `spacing` is seeded
+from mermaid's own `flowchart.nodeSpacing`.
 
-## The demo
+## How it works
 
-`npm run dev` serves `demo/` — the showcase gallery at `/` and the
-option-comparison matrix at `/trials.html?suite=bow|swerve|ordering|
-spacing|samples`. The committed screenshots in `trials/` are the
-visual record of how the defaults were chosen.
+The placement math is pure and lives in `src/layout.ts`.
 
-## Shape of the code
+Nodes sit at equal angles on one circle, with the first node centered at
+the top. Equal angles give the ring mirror symmetry, so the boxes on the
+left sit at the same heights as their partners on the right. Node sizes
+never bend the angles. They grow the radius instead: for every pair of
+nodes the chord between their positions must cover both footprints plus
+spacing, and the radius is the smallest value that satisfies all pairs.
 
-- `src/layout.ts` — the placement math, pure and unit-tested: node
-  ordering around the circle, radius from measured node sizes, arc
-  and chord point generation. No DOM.
-- `src/render.ts` — the mermaid seam: insert nodes to measure them,
-  call the math, position nodes, route edges through mermaid's own
-  edge renderer.
-- `src/index.ts` — the `LayoutLoaderDefinition[]` mermaid consumes.
-- `demo/` — a vite page rendering the trial diagrams; the visual
-  record lives beside it.
+The order of nodes around the circle comes from walking the graph. From
+each node the walk continues along the edge written soonest after the
+edge it just followed, because authors write a cycle as a run of
+statements. Every possible starting node is tried, and the walk that
+places the most edges between circle neighbors wins.
 
-## Conventions
+An edge between neighbors is a true arc of the layout circle, running
+from the exact angle where the circle leaves the source box to the exact
+angle where it enters the target box. Edges between non-neighbors are
+quadratic curves bowed toward the center, and curves that would pass
+close to the center slide sideways so they braid around it instead of
+all crossing at one point. Self loops are drawn as petals reaching
+outward from the ring.
 
-Conventional Commits, standard types. Model commits end with the
-trailer `(generated using <model_name>)`; never `Co-Authored-By`.
-Ask before pushing to any remote, once one exists. Committing as work
-completes is fine and wanted.
+Every path begins and ends with a short straight segment laid exactly
+along the curve's terminal tangent. This is what keeps the arrowheads
+honest: an SVG marker orients itself along the final path segment, and
+mermaid's own line offset pass displaces points that sit within a few
+pixels of a path end. The straight tail outreaches that window, so the
+arrowhead's line of symmetry always matches the trajectory of the curve
+it terminates.
 
-## Gates
+Edge labels are measured after rendering and tested for collision
+against every node box. A label that would sit too close to a box slides
+radially outward, where there is always room.
 
-`npm test` (vitest, the math), `npm run lint` (eslint), `npm run
-build` (vite lib build + declarations). All three green before any
-commit that touches `src/`.
+## Demo
 
-## Of record
+`npm run dev` serves the demo. The gallery at `/` renders ten cases, and
+`/trials.html?suite=bow` (also `swerve`, `ordering`, `spacing`,
+`samples`) renders the same diagrams under different option values for
+side-by-side comparison.
 
-Mermaid ships `InternalHelpers` marked deprecated — "definitions will
-change without notice." Every external layout engine (elk, tidy-tree)
-rides the same seam; the peer range stays `^11.0.2` and a mermaid
-upgrade in the consumer is the moment to re-run the demo.
+## Development
+
+Three gates, all green before committing changes to `src/`:
+
+```sh
+npm test        # vitest, the placement math
+npm run lint    # eslint
+npm run build   # vite library build plus type declarations
+```
+
+## Caveats
+
+The package renders through mermaid's `InternalHelpers`, which mermaid
+marks as deprecated for external use. The official layout engines (elk,
+tidy-tree) ship on the same seam, so the risk is shared, but a mermaid
+upgrade in a consuming project is the right moment to re-run the demo
+and look. The peer range is `mermaid ^11.0.2`, developed against 11.16.
+
+## License
+
+MIT

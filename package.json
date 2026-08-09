@@ -30,6 +30,11 @@
     "cycle",
     "diagram"
   ],
+  "author": "Andrew Broz",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AndrewBroz/mermaid-layout-circular"
+  },
   "license": "MIT",
   "peerDependencies": {
     "mermaid": "^11.0.2"

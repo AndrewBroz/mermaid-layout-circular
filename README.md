@@ -13,6 +13,21 @@ package addresses the request in
 [mermaid-js/mermaid#3228](https://github.com/mermaid-js/mermaid/issues/3228),
 open since 2022: cycles should look like cycles.
 
+Here is the same five-node flowchart rendered both ways:
+
+| `layout: circular` | `layout: dagre` (mermaid default) |
+| --- | --- |
+| ![The water cycle as a ring of five boxes connected by arcs of one circle](docs/media/water-cycle-circular.png) | ![The same five nodes flattened into a horizontal ladder with a long return arrow](docs/media/water-cycle-dagre.png) |
+
+Edge labels, chords between non-neighbors, and mermaid's hand-drawn look
+all keep working:
+
+| Labels and a chord | `look: handDrawn` |
+| --- | --- |
+| ![A five-node daily cycle with labels in the gaps and a dotted chord across the middle](docs/media/labels-and-chord.png) | ![A four-node cycle drawn in mermaid's sketchy hand-drawn style](docs/media/hand-drawn.png) |
+
+![Ten months arranged in a circle, arrows riding the ring between them](docs/media/ten-nodes.png)
+
 `CLAUDE.md` is a symlink to this file, so human and model readers see the
 same document. Design decisions are logged in `docs/DECISIONS.md`, which
 is append-only and dated.

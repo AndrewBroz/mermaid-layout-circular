@@ -9,12 +9,12 @@
  * of 2R·sin(gπ/n), which must cover the two footprints plus spacing,
  * so R is the maximum of that requirement over all pairs.
  *
- * Edges are drawn the way a hand draws them: leave the border of the
- * source through the point facing the gap, arc through the middle of
- * the gap on the rim, land flush on the border of the target. Paths
- * start and end exactly on borders — mermaid is told to skip its own
- * boundary trimming — which is what keeps every arrowhead seated on
- * the box edge it points into.
+ * A neighbor edge is a true arc of that same circle — from the exact
+ * angle where the circle leaves the source box's border to the exact
+ * angle where it enters the target's, so the eye reads one ring, not
+ * n separate curves, and every arrowhead sits on the border rotated
+ * along the rim's own tangent. Paths start and end exactly on
+ * borders — mermaid is told to skip its own boundary trimming.
  */
 
 export interface LayoutNodeInput {
@@ -246,6 +246,47 @@ const rayAnchor = (b: BoxAt, target: Point): Point => {
   return { x: b.x + dx * t, y: b.y + dy * t };
 };
 
+const insideBox = (p: Point, b: BoxAt): boolean =>
+  Math.abs(p.x - b.x) < b.width / 2 && Math.abs(p.y - b.y) < b.height / 2;
+
+/**
+ * The angle at which the circle of `radius` crosses the border of a
+ * box whose center sits on it — walking from the center's angle
+ * toward `limit`. Circle and box are both convex, so the crossing is
+ * unique; a coarse walk brackets it and bisection sharpens it. Falls
+ * back to `limit` when the walk never leaves the box (a box so large
+ * it swallows its whole gap — the radius solver prevents this, but a
+ * fallback beats a lie).
+ */
+const rimCrossing = (radius: number, b: BoxAt, from: number, limit: number): number => {
+  const steps = 32;
+  let inside = from;
+  let outside: number | undefined;
+  for (let i = 1; i <= steps; i++) {
+    const angle = from + ((limit - from) * i) / steps;
+    if (insideBox(onCircle(radius, angle), b)) {
+      inside = angle;
+    } else {
+      outside = angle;
+      break;
+    }
+  }
+  if (outside === undefined) {
+    return limit;
+  }
+  let lo = inside;
+  let hi: number = outside;
+  for (let i = 0; i < 40; i++) {
+    const probe = (lo + hi) / 2;
+    if (insideBox(onCircle(radius, probe), b)) {
+      lo = probe;
+    } else {
+      hi = probe;
+    }
+  }
+  return hi;
+};
+
 /** A quadratic Bézier sampled evenly, endpoints included. */
 const quadratic = (p0: Point, c: Point, p3: Point, samples: number): Point[] => {
   const points: Point[] = [];
@@ -366,20 +407,32 @@ export const circularLayout = (
     const neighbors = Math.min(gap, n - gap) === 1 || n === 2;
 
     if (neighbors) {
-      // Through the middle of the gap: leave the border where the ray
-      // toward the gap crosses it, pass the gap's midpoint, land
-      // flush on the neighbor's border. The midpoint's radius is
-      // pulled to the anchors' own radius — a rim-height waypoint
-      // between two low anchors would sag past the ring's band (two
-      // boxes side by side at the bottom of the ring taught this).
-      const midAngle = a + shortWay(a, b) / 2;
-      const guide = onCircle(radius, midAngle);
-      const from = rayAnchor(boxOf(e.start), guide);
-      const to = rayAnchor(boxOf(e.end), guide);
-      const band = (Math.hypot(from.x, from.y) + Math.hypot(to.x, to.y)) / 2;
-      const mid = onCircle(band + spread * 24, midAngle);
-      const control = { x: 2 * mid.x - (from.x + to.x) / 2, y: 2 * mid.y - (from.y + to.y) / 2 };
-      return { ...e, points: quadratic(from, control, to, samples), onRim: true };
+      // One circle, drawn honestly: the edge is a true arc of the
+      // rim, from the exact angle where the circle leaves the source
+      // box's border to the exact angle where it enters the target's.
+      // The arrowhead inherits the rim's tangent at the crossing.
+      // A sibling pair (opposite or parallel arrows) rides concentric
+      // arcs — the offset clamped so the offset circle still passes
+      // through both boxes.
+      const boxA = boxOf(e.start);
+      const boxB = boxOf(e.end);
+      const maxOffset =
+        0.6 * Math.min(boxA.width / 2, boxA.height / 2, boxB.width / 2, boxB.height / 2);
+      const offset = Math.max(-maxOffset, Math.min(maxOffset, spread * 24));
+      const arcRadius = radius + offset;
+      const delta = shortWay(a, b);
+      const midAngle = a + delta / 2;
+      // The target's angle expressed continuously from `a` — walking
+      // back from its stored angle can sit across the ±π wrap and
+      // send the arc the long way round the circle.
+      const bUnwrapped = a + delta;
+      const exit = rimCrossing(arcRadius, boxA, a, midAngle);
+      const entry = rimCrossing(arcRadius, boxB, bUnwrapped, midAngle);
+      const points: Point[] = [];
+      for (let i = 0; i <= samples; i++) {
+        points.push(onCircle(arcRadius, exit + ((entry - exit) * i) / samples));
+      }
+      return { ...e, points, onRim: true };
     }
 
     // A chord: bowed toward the center, swerved left of travel by how

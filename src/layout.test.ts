@@ -158,26 +158,44 @@ describe('edge routing', () => {
     }
   });
 
-  it('sends a neighbor edge through the middle of the gap, hugging the ring', () => {
+  it('draws every neighbor edge as a true arc of the one circle', () => {
+    const { edges, radius } = circularLayout(
+      ['A', 'B', 'C', 'D', 'E'].map((id) => box(id)),
+      cycle('A', 'B', 'C', 'D', 'E')
+    );
+    for (const e of edges) {
+      expect(e.onRim).toBe(true);
+      // Every point of the path — endpoints included — lies on the
+      // rim: the eye must read one circle, not five curves.
+      for (const p of e.points) {
+        expect(Math.hypot(p.x, p.y)).toBeCloseTo(radius, 4);
+      }
+    }
+  });
+
+  it('starts an arc exactly where the circle leaves the source box', () => {
     const { edges, nodes, radius } = circularLayout(
       ['A', 'B', 'C', 'D', 'E'].map((id) => box(id)),
       cycle('A', 'B', 'C', 'D', 'E')
     );
     const byId = new Map(nodes.map((n) => [n.id, n]));
+    const onBorderOf = (p: { x: number; y: number }, id: string) => {
+      const n = byId.get(id)!;
+      const dx = Math.abs(p.x - n.x);
+      const dy = Math.abs(p.y - n.y);
+      const eps = 0.01;
+      return (
+        (Math.abs(dx - 40) < eps && dy <= 20 + eps) ||
+        (Math.abs(dy - 20) < eps && dx <= 40 + eps)
+      );
+    };
     for (const e of edges) {
-      expect(e.onRim).toBe(true);
-      const mid = e.points[Math.floor(e.points.length / 2)]!;
-      // The curve's waist stays in the ring's band — near the rim,
-      // never sagging far inside nor ballooning outside…
-      const r = Math.hypot(mid.x, mid.y);
-      expect(r).toBeGreaterThan(radius * 0.8);
-      expect(r).toBeLessThan(radius * 1.02);
-      // …and sits at the half-angle between the two nodes.
-      const a = byId.get(e.start)!;
-      const b = byId.get(e.end)!;
-      const midAngle = Math.atan2(mid.y, mid.x);
-      const expected = Math.atan2((a.y + b.y) / 2, (a.x + b.x) / 2);
-      expect(Math.abs(midAngle - expected)).toBeLessThan(0.02);
+      const first = e.points[0]!;
+      const last = e.points[e.points.length - 1]!;
+      expect(onBorderOf(first, e.start), `${e.id} start`).toBe(true);
+      expect(onBorderOf(last, e.end), `${e.id} end`).toBe(true);
+      expect(Math.hypot(first.x, first.y)).toBeCloseTo(radius, 4);
+      expect(Math.hypot(last.x, last.y)).toBeCloseTo(radius, 4);
     }
   });
 

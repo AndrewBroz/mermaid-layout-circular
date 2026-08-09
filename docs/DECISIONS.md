@@ -47,6 +47,23 @@ update the README beside it.
     label rectangle is checked against every node box; a colliding
     rim label slides radially outward until clear — outside the ring
     there is always room.
+- **2026-08-08 — The author's second review: one circle.** The
+  quadratic-per-edge routing fixed flush entries but broke the form —
+  each edge was its own curve, and the ring read as a poorly drawn
+  figure. Superseded: a neighbor edge is a true arc of the one rim
+  circle, from the exact angle where the circle leaves the source
+  border (rim∩border by bisection; both shapes convex, so the
+  crossing is unique) to where it enters the target's. Arrowheads
+  inherit the rim's tangent. Of record: the entry walk must unwrap
+  the target's angle (`a + delta`) — the stored angle can sit across
+  the ±π seam and send the arc the long way round, and did.
+- **2026-08-08 — Labels are owned, measured, and given breath.**
+  positionEdgeLabel re-estimates position whenever the basis spline
+  misses the sampled midpoint (always, for a curve), so the seam sets
+  the label transform itself after measuring. The collision padding
+  is breathing room (32px), not mere non-overlap — a label clearing
+  a box by five pixels still reads as jammed; a tight-gap label
+  slides radially outside the ring, where there is always room.
 - **2026-08-08 — The helpers seam is accepted risk.** mermaid marks
   `InternalHelpers` deprecated for external use. elk and tidy-tree
   ship on it anyway; so does this. The demo is the canary on

@@ -87,7 +87,7 @@ export const render = async (
 
   await Promise.all(
     data4Layout.edges.map(async (edge) => {
-      const labelEl = await insertEdgeLabel(edgeLabels, edge);
+      await insertEdgeLabel(edgeLabels, edge);
 
       const startNode = nodeDb.get(edge.start ?? '');
       const endNode = nodeDb.get(edge.end ?? '');
@@ -118,14 +118,24 @@ export const render = async (
       // room. Rim edges only; a chord's label lives in the middle,
       // which the swerve already keeps clear.
       if (edge.label && routed?.onRim) {
-        const box = (labelEl as SVGGraphicsElement | undefined)?.getBBox?.();
+        // insertEdgeLabel measures the rendered label and records its
+        // size on the edge itself — the wrapper's own getBBox reads
+        // zero for foreignObject labels.
+        const { width: labelW = 0, height: labelH = 0 } = edge as {
+          width?: number;
+          height?: number;
+        };
         const r = Math.hypot(mid.x, mid.y);
-        if (box && r > 0) {
+        if (labelW > 0 && r > 0) {
+          // The padding is breathing room, not mere non-overlap — a
+          // label that clears a box by five pixels still reads as
+          // jammed against it.
+          const breath = 32;
           const collides = (at: Point): boolean =>
             [...nodeDb.values()].some(
               (node) =>
-                Math.abs(at.x - (node.x ?? 0)) < (box.width + 8 + (node.width ?? 0)) / 2 &&
-                Math.abs(at.y - (node.y ?? 0)) < (box.height + 6 + (node.height ?? 0)) / 2
+                Math.abs(at.x - (node.x ?? 0)) < (labelW + breath + (node.width ?? 0)) / 2 &&
+                Math.abs(at.y - (node.y ?? 0)) < (labelH + breath + (node.height ?? 0)) / 2
             );
           for (let push = 8; collides(labelAt) && push <= 64; push += 8) {
             labelAt = { x: (mid.x * (r + push)) / r, y: (mid.y * (r + push)) / r };
@@ -150,6 +160,18 @@ export const render = async (
         true
       );
       positionEdgeLabel(edgeWithPath, paths);
+      // positionEdgeLabel estimates its own position whenever the
+      // basis spline doesn't pass exactly through the sampled
+      // midpoint — which is always, for a curve. The measured,
+      // collision-pushed point is the designed one; place the label
+      // there directly. Terminal labels keep positionEdgeLabel's
+      // placement.
+      if (edge.label) {
+        const wrapper = (edgeLabels.node() as SVGGElement | null)?.querySelector(
+          `.label[data-id="${CSS.escape(edge.id)}"]`
+        )?.parentNode as SVGGElement | null;
+        wrapper?.setAttribute('transform', `translate(${labelAt.x}, ${labelAt.y})`);
+      }
     })
   );
 };

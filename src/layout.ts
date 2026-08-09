@@ -1,16 +1,20 @@
 /**
  * The placement math, pure and DOM-free.
  *
- * Nodes go on one circle; the radius is solved from what the nodes
- * demand, not guessed. Every adjacent pair (i, i+1) around the rim
- * needs a chord of at least d_i between their centers — half of each
- * footprint plus the configured spacing. On a circle of radius R that
- * chord subtends 2·asin(d_i / 2R), which shrinks as R grows, so the
- * smallest circle where everything fits is the R where the subtended
- * angles sum to exactly 2π. That equation has no closed form; bisection
- * finds it. A pleasant consequence: each node's angular slice is
- * proportional to what it needs, so one wide node widens its own gap
- * without inflating everyone else's.
+ * Nodes sit at equal angles on one circle — the regular polygon a
+ * designer would draw — with the first node centered on top, so the
+ * ring is mirror-symmetric about the vertical axis and side pairs
+ * share their heights exactly. The radius is solved from what the
+ * nodes demand: every pair of positions g steps apart spans a chord
+ * of 2R·sin(gπ/n), which must cover the two footprints plus spacing,
+ * so R is the maximum of that requirement over all pairs.
+ *
+ * Edges are drawn the way a hand draws them: leave the border of the
+ * source through the point facing the gap, arc through the middle of
+ * the gap on the rim, land flush on the border of the target. Paths
+ * start and end exactly on borders — mermaid is told to skip its own
+ * boundary trimming — which is what keeps every arrowhead seated on
+ * the box edge it points into.
  */
 
 export interface LayoutNodeInput {
@@ -184,48 +188,14 @@ const followEdges = (nodes: LayoutNodeInput[], edges: LayoutEdgeInput[]): string
   return best;
 };
 
-/**
- * Solve for the radius where the required chords exactly close the
- * circle: Σ 2·asin(d_i / 2R) = 2π, monotone in R, by bisection.
- */
-const solveRadius = (chords: number[]): number => {
-  const angleSum = (r: number) =>
-    chords.reduce((sum, d) => sum + 2 * Math.asin(Math.min(1, d / (2 * r))), 0);
-
-  // Below lo an asin argument clips at 1 (nodes would collide);
-  // hi starts at the perimeter-derived upper bound.
-  let lo = Math.max(...chords) / 2;
-  let hi = Math.max(lo * 2, chords.reduce((a, b) => a + b, 0) / TAU) * 2;
-  while (angleSum(hi) > TAU) {
-    hi *= 2;
-  }
-  if (angleSum(lo) <= TAU) {
-    return lo;
-  }
-  for (let i = 0; i < 60; i++) {
-    const mid = (lo + hi) / 2;
-    if (angleSum(mid) > TAU) {
-      lo = mid;
-    } else {
-      hi = mid;
-    }
-  }
-  return hi;
-};
-
 const onCircle = (radius: number, angle: number): Point => ({
   x: radius * Math.cos(angle),
   y: radius * Math.sin(angle),
 });
 
-/**
- * Sample an arc on the rim from angle a to angle b, the short way.
- * A diameter has no short way; the tie always resolves clockwise,
- * which mirrors a two-node pair into a lens by itself — the two
- * directions start from opposite nodes, so one clockwise half is the
- * right rim and the other is the left.
- */
-const rimArc = (radius: number, a: number, b: number, samples: number): Point[] => {
+/** The signed short way from angle a to angle b; a diameter's tie
+ *  resolves clockwise, which mirrors a two-node pair into a lens. */
+const shortWay = (a: number, b: number): number => {
   let delta = (b - a) % TAU;
   if (delta > Math.PI) {
     delta -= TAU;
@@ -236,11 +206,7 @@ const rimArc = (radius: number, a: number, b: number, samples: number): Point[] 
   if (Math.abs(Math.abs(delta) - Math.PI) < 1e-9) {
     delta = Math.PI;
   }
-  const points: Point[] = [];
-  for (let i = 0; i <= samples; i++) {
-    points.push(onCircle(radius, a + (delta * i) / samples));
-  }
-  return points;
+  return delta;
 };
 
 interface BoxAt extends Point {
@@ -248,107 +214,65 @@ interface BoxAt extends Point {
   height: number;
 }
 
-const insideBox = (p: Point, b: BoxAt) =>
-  Math.abs(p.x - b.x) < b.width / 2 && Math.abs(p.y - b.y) < b.height / 2;
-
 /**
- * Drop interior samples that fall inside either endpoint's box.
- * mermaid's insertEdge discards the first and last point (the node
- * centers) and asks each node shape to intersect the line toward the
- * next point — which only lands on the true boundary if that next
- * point is already outside the shape.
+ * The middle of the side facing the target — used for the petal's
+ * outward side, where only the side matters.
  */
-const clipToBoxes = (points: Point[], start: BoxAt, end: BoxAt): Point[] => {
-  const interior = points.slice(1, -1).filter((p) => !insideBox(p, start) && !insideBox(p, end));
-  if (interior.length === 0) {
-    const mid = points[Math.floor(points.length / 2)]!;
-    interior.push(mid);
-  }
-  return [points[0]!, ...interior, points[points.length - 1]!];
+const sideAnchor = (b: BoxAt, target: Point): Point => {
+  const dx = target.x - b.x;
+  const dy = target.y - b.y;
+  const exitsVertical = Math.abs(dx) * b.height >= Math.abs(dy) * b.width;
+  return exitsVertical
+    ? { x: b.x + Math.sign(dx || 1) * (b.width / 2), y: b.y }
+    : { x: b.x, y: b.y + Math.sign(dy || 1) * (b.height / 2) };
 };
 
 /**
- * A chord bowed toward the center: a quadratic Bézier whose control
- * point is the chord midpoint pulled `bow` of the way to the origin.
- * At bow 0 the samples lie on the straight chord.
- *
- * Pulling toward the center cannot move a diameter — its midpoint is
- * the center — so every diameter of a wheel stabs through one point.
- * The swerve slides the control sideways (left of travel), scaled by
- * how close the chord passes to the center: diameters braid around
- * the hub, short chords stay put, and the two directions of an
- * opposite pair swerve to opposite sides on their own.
+ * Where the ray from the box center toward the target crosses the
+ * border — the spot a hand starts an arrow from. Rays toward a
+ * lateral target cross mid-edge; only a genuinely diagonal target
+ * approaches a corner, which is then honestly where the arrow goes.
  */
-const bowedChord = (
-  a: Point,
-  b: Point,
-  bow: number,
-  swerve: number,
-  radius: number,
-  samples: number
-): Point[] => {
-  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-  const chordLength = Math.hypot(b.x - a.x, b.y - a.y);
-  const centrality = radius === 0 ? 0 : 1 - Math.min(1, Math.hypot(mid.x, mid.y) / radius);
-  const left =
-    chordLength === 0
-      ? { x: 0, y: 0 }
-      : { x: (b.y - a.y) / chordLength, y: -(b.x - a.x) / chordLength };
-  const slide = swerve * radius * centrality;
-  const control = {
-    x: mid.x * (1 - bow) + left.x * slide,
-    y: mid.y * (1 - bow) + left.y * slide,
-  };
+const rayAnchor = (b: BoxAt, target: Point): Point => {
+  const dx = target.x - b.x;
+  const dy = target.y - b.y;
+  const t = Math.min(
+    dx === 0 ? Infinity : b.width / 2 / Math.abs(dx),
+    dy === 0 ? Infinity : b.height / 2 / Math.abs(dy)
+  );
+  if (!Number.isFinite(t)) {
+    return { x: b.x, y: b.y + b.height / 2 };
+  }
+  return { x: b.x + dx * t, y: b.y + dy * t };
+};
+
+/** A quadratic Bézier sampled evenly, endpoints included. */
+const quadratic = (p0: Point, c: Point, p3: Point, samples: number): Point[] => {
   const points: Point[] = [];
   for (let i = 0; i <= samples; i++) {
     const t = i / samples;
     const u = 1 - t;
     points.push({
-      x: u * u * a.x + 2 * u * t * control.x + t * t * b.x,
-      y: u * u * a.y + 2 * u * t * control.y + t * t * b.y,
+      x: u * u * p0.x + 2 * u * t * c.x + t * t * p3.x,
+      y: u * u * p0.y + 2 * u * t * c.y + t * t * p3.y,
     });
   }
   return points;
 };
 
-/**
- * A self-loop: a petal reaching outward from the node, drawn as a
- * cubic Bézier that leaves and returns to the node's center with its
- * controls flanking the node's angle beyond the rim.
- */
-const petal = (radius: number, angle: number, reach: number, samples: number): Point[] => {
-  const spread = 0.55;
-  const anchor = onCircle(radius, angle);
-  const c1 = onCircle(radius + reach, angle - spread);
-  const c2 = onCircle(radius + reach, angle + spread);
+/** A cubic Bézier sampled evenly, endpoints included. */
+const cubic = (p0: Point, c1: Point, c2: Point, p3: Point, samples: number): Point[] => {
   const points: Point[] = [];
   for (let i = 0; i <= samples; i++) {
     const t = i / samples;
     const u = 1 - t;
     points.push({
-      x: u * u * u * anchor.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * anchor.x,
-      y: u * u * u * anchor.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * anchor.y,
+      x: u * u * u * p0.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * p3.x,
+      y: u * u * u * p0.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * p3.y,
     });
   }
   return points;
 };
-
-/**
- * Nudge a path sideways-of-radius so parallel and opposite edges of
- * the same pair separate. The nudge tapers with sin(πt): zero at both
- * endpoints (they must stay on the node centers for boundary
- * trimming), full at the middle.
- */
-const fanOut = (points: Point[], offset: number): Point[] =>
-  points.map((p, i) => {
-    const t = i / (points.length - 1);
-    const r = Math.hypot(p.x, p.y);
-    if (r === 0 || offset === 0) {
-      return p;
-    }
-    const scale = (r + offset * Math.sin(Math.PI * t)) / r;
-    return { x: p.x * scale, y: p.y * scale };
-  });
 
 export const circularLayout = (
   nodes: LayoutNodeInput[],
@@ -372,48 +296,42 @@ export const circularLayout = (
 
   const order = ordering === 'input' ? nodes.map((n) => n.id) : followEdges(nodes, edges);
   const byId = new Map(nodes.map((n) => [n.id, n]));
+  const n = order.length;
+  const step = TAU / n;
 
-  // Chord i is the demand between rim neighbors order[i] and order[i+1].
-  const chords = order.map((id, i) => {
-    const next = order[(i + 1) % order.length]!;
-    return footprint(byId.get(id)!) + footprint(byId.get(next)!) + spacing;
-  });
-  const radius = solveRadius(chords);
-
-  // Lay the demanded angles around the rim; distribute any slack (the
-  // radius never dips below the largest single chord's need, which can
-  // leave the sum short of 2π) evenly so the circle still closes.
-  const angles = chords.map((d) => 2 * Math.asin(Math.min(1, d / (2 * radius))));
-  const slack = (TAU - angles.reduce((a, b) => a + b, 0)) / order.length;
-
-  const angleOf = new Map<string, number>();
-  let angle = startAngle;
-  for (const [i, id] of order.entries()) {
-    angleOf.set(id, angle);
-    angle += angles[i]! + slack;
+  // Equal angles; the radius covers the worst pair at every gap:
+  // positions g steps apart span a chord of 2R·sin(gπ/n).
+  let radius = 0;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const gap = Math.min(j - i, n - (j - i));
+      const need = footprint(byId.get(order[i]!)!) + footprint(byId.get(order[j]!)!) + spacing;
+      radius = Math.max(radius, need / (2 * Math.sin((gap * Math.PI) / n)));
+    }
   }
 
-  const placed: PlacedNode[] = nodes.map((n) => {
-    const a = angleOf.get(n.id)!;
-    return { id: n.id, ...onCircle(radius, a), angle: a };
+  const angleOf = new Map(order.map((id, i) => [id, startAngle + i * step]));
+  const placed: PlacedNode[] = nodes.map((node) => {
+    const a = angleOf.get(node.id)!;
+    return { id: node.id, ...onCircle(radius, a), angle: a };
   });
+
+  const boxOf = (id: string): BoxAt => {
+    const node = byId.get(id)!;
+    return { ...onCircle(radius, angleOf.get(id)!), width: node.width, height: node.height };
+  };
 
   const position = new Map(order.map((id, i) => [id, i]));
 
-  // Edges sharing an unordered pair of ends fan out with distinct
-  // radial offsets, or two opposite arrows would draw as one line.
+  // Edges sharing an unordered pair of ends must separate, or two
+  // opposite arrows draw as one line. Rim pairs split radially at the
+  // gap's midpoint; chord pairs split by bow depth.
   const pairIndex = new Map<string, number>();
   const pairCount = new Map<string, number>();
-  const pairKeyOf = (e: LayoutEdgeInput) => [e.start, e.end].sort().join(' ');
+  const pairKeyOf = (e: LayoutEdgeInput) => [e.start, e.end].sort().join(' ');
   for (const e of edges) {
-    const key = pairKeyOf(e);
-    pairCount.set(key, (pairCount.get(key) ?? 0) + 1);
+    pairCount.set(pairKeyOf(e), (pairCount.get(pairKeyOf(e)) ?? 0) + 1);
   }
-
-  const boxOf = (id: string): BoxAt => {
-    const n = byId.get(id)!;
-    return { ...onCircle(radius, angleOf.get(id)!), width: n.width, height: n.height };
-  };
 
   const routed: RoutedEdge[] = edges.map((e) => {
     const a = angleOf.get(e.start);
@@ -421,11 +339,23 @@ export const circularLayout = (
     if (a === undefined || b === undefined) {
       return { ...e, points: [], onRim: false };
     }
+
     if (e.start === e.end) {
-      const reach = footprint(byId.get(e.start)!) * 2 + spacing;
-      const looped = petal(radius, a, reach, samples);
-      return { ...e, points: clipToBoxes(looped, boxOf(e.start), boxOf(e.end)), onRim: false };
+      // A petal reaching outward: it springs from the outward-facing
+      // side, from two points either side of that side's middle.
+      const home = boxOf(e.start);
+      const reach = footprint(byId.get(e.start)!) + spacing;
+      const t1 = onCircle(radius + reach, a - 0.45);
+      const t2 = onCircle(radius + reach, a + 0.45);
+      const outwardSide = sideAnchor(home, onCircle(radius * 2, a));
+      const alongX = outwardSide.y === home.y ? 0 : 1;
+      const flank = (sign: number): Point =>
+        alongX === 0
+          ? { x: outwardSide.x, y: home.y + (sign * home.height) / 4 }
+          : { x: home.x + (sign * home.width) / 4, y: outwardSide.y };
+      return { ...e, points: cubic(flank(-1), t1, t2, flank(1), samples), onRim: false };
     }
+
     const key = pairKeyOf(e);
     const siblings = pairCount.get(key)!;
     const index = pairIndex.get(key) ?? 0;
@@ -433,24 +363,45 @@ export const circularLayout = (
     const spread = siblings === 1 ? 0 : index - (siblings - 1) / 2;
 
     const gap = Math.abs(position.get(e.start)! - position.get(e.end)!);
-    const neighbors = Math.min(gap, order.length - gap) === 1 || order.length === 2;
+    const neighbors = Math.min(gap, n - gap) === 1 || n === 2;
+
     if (neighbors) {
-      // Rim points all sit near radius R, where a radial nudge is
-      // stable; chord points can pass the origin, where it is not.
-      const points = fanOut(rimArc(radius, a, b, samples), spread * 24);
-      return { ...e, points: clipToBoxes(points, boxOf(e.start), boxOf(e.end)), onRim: true };
+      // Through the middle of the gap: leave the border where the ray
+      // toward the gap crosses it, pass the gap's midpoint, land
+      // flush on the neighbor's border. The midpoint's radius is
+      // pulled to the anchors' own radius — a rim-height waypoint
+      // between two low anchors would sag past the ring's band (two
+      // boxes side by side at the bottom of the ring taught this).
+      const midAngle = a + shortWay(a, b) / 2;
+      const guide = onCircle(radius, midAngle);
+      const from = rayAnchor(boxOf(e.start), guide);
+      const to = rayAnchor(boxOf(e.end), guide);
+      const band = (Math.hypot(from.x, from.y) + Math.hypot(to.x, to.y)) / 2;
+      const mid = onCircle(band + spread * 24, midAngle);
+      const control = { x: 2 * mid.x - (from.x + to.x) / 2, y: 2 * mid.y - (from.y + to.y) / 2 };
+      return { ...e, points: quadratic(from, control, to, samples), onRim: true };
     }
-    // Chord siblings separate by bow depth; opposite directions
-    // already separate by the swerve's left-of-travel.
-    const points = bowedChord(
-      onCircle(radius, a),
-      onCircle(radius, b),
-      bow + spread * 0.15,
-      swerve,
-      radius,
-      samples
-    );
-    return { ...e, points: clipToBoxes(points, boxOf(e.start), boxOf(e.end)), onRim: false };
+
+    // A chord: bowed toward the center, swerved left of travel by how
+    // near it passes the center, so diameters braid around the hub
+    // and opposite directions separate on their own.
+    const pa = onCircle(radius, a);
+    const pb = onCircle(radius, b);
+    const mid = { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 };
+    const chordLength = Math.hypot(pb.x - pa.x, pb.y - pa.y);
+    const centrality = 1 - Math.min(1, Math.hypot(mid.x, mid.y) / radius);
+    const left =
+      chordLength === 0
+        ? { x: 0, y: 0 }
+        : { x: (pb.y - pa.y) / chordLength, y: -(pb.x - pa.x) / chordLength };
+    const slide = swerve * radius * centrality;
+    const control = {
+      x: mid.x * (1 - (bow + spread * 0.15)) + left.x * slide,
+      y: mid.y * (1 - (bow + spread * 0.15)) + left.y * slide,
+    };
+    const from = rayAnchor(boxOf(e.start), control);
+    const to = rayAnchor(boxOf(e.end), control);
+    return { ...e, points: quadratic(from, control, to, samples), onRim: false };
   });
 
   return { nodes: placed, edges: routed, order, radius };

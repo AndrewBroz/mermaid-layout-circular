@@ -87,7 +87,7 @@ export const render = async (
 
   await Promise.all(
     data4Layout.edges.map(async (edge) => {
-      await insertEdgeLabel(edgeLabels, edge);
+      const labelEl = await insertEdgeLabel(edgeLabels, edge);
 
       const startNode = nodeDb.get(edge.start ?? '');
       const endNode = nodeDb.get(edge.end ?? '');
@@ -110,9 +110,35 @@ export const render = async (
       // trimmed; give it the path's midpoint so a label never lands at
       // the origin.
       const mid = points[Math.floor(points.length / 2)]!;
-      (edgeWithPath as { x?: number; y?: number }).x = mid.x;
-      (edgeWithPath as { x?: number; y?: number }).y = mid.y;
+      let labelAt = mid;
+      // A label wider than its gap would sit on the neighboring
+      // boxes. The label's true size is known here — measure its
+      // rectangle against every node box, and while it collides,
+      // slide it radially outward: outside the ring there is always
+      // room. Rim edges only; a chord's label lives in the middle,
+      // which the swerve already keeps clear.
+      if (edge.label && routed?.onRim) {
+        const box = (labelEl as SVGGraphicsElement | undefined)?.getBBox?.();
+        const r = Math.hypot(mid.x, mid.y);
+        if (box && r > 0) {
+          const collides = (at: Point): boolean =>
+            [...nodeDb.values()].some(
+              (node) =>
+                Math.abs(at.x - (node.x ?? 0)) < (box.width + 8 + (node.width ?? 0)) / 2 &&
+                Math.abs(at.y - (node.y ?? 0)) < (box.height + 6 + (node.height ?? 0)) / 2
+            );
+          for (let push = 8; collides(labelAt) && push <= 64; push += 8) {
+            labelAt = { x: (mid.x * (r + push)) / r, y: (mid.y * (r + push)) / r };
+          }
+        }
+      }
+      (edgeWithPath as { x?: number; y?: number }).x = labelAt.x;
+      (edgeWithPath as { x?: number; y?: number }).y = labelAt.y;
 
+      // The layout already anchored both endpoints on the node
+      // borders; skipIntersect stops insertEdge from re-trimming
+      // toward interior samples, which is what seats the arrowhead
+      // flush on the border it points into.
       const paths = insertEdge(
         edgePaths,
         edgeWithPath,
@@ -120,7 +146,8 @@ export const render = async (
         data4Layout.type,
         startNode,
         endNode,
-        data4Layout.diagramId
+        data4Layout.diagramId,
+        true
       );
       positionEdgeLabel(edgeWithPath, paths);
     })

@@ -28,6 +28,25 @@ update the README beside it.
   - *Spacing:* 40 default; the knob reads monotonically 16→90.
   - *Sample count:* 24 default; 6 was already indistinguishable at
     demo scale, so density is not a cost worth tuning down.
+- **2026-08-08 — The author's review: measure, think design.** The
+  first shipped look failed his eye on two counts, both upheld:
+  arrowheads landed on box corners at wrong rotations, and the ring
+  was lopsided. Superseded by this review:
+  - *Equal angles supersede sized slices.* A designer draws the
+    regular polygon: first node centered on top, mirror symmetry
+    about the vertical axis, side pairs at identical heights. The
+    radius takes the worst pair over every gap instead of bending
+    the angles.
+  - *Paths own their endpoints.* Anchors sit where the ray toward
+    the gap crosses the border (mid-edge, as a hand draws), curves
+    pass through the gap's midpoint pulled to the anchors' radius (a
+    rim-height waypoint sagged below side-by-side boxes), and
+    mermaid renders with skipIntersect — its own re-trimming toward
+    interior samples is what buried and rotated the arrowheads.
+  - *Labels are measured, not hoped.* After insertEdgeLabel the true
+    label rectangle is checked against every node box; a colliding
+    rim label slides radially outward until clear — outside the ring
+    there is always room.
 - **2026-08-08 — The helpers seam is accepted risk.** mermaid marks
   `InternalHelpers` deprecated for external use. elk and tidy-tree
   ship on it anyway; so does this. The demo is the canary on

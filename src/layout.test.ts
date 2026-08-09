@@ -16,6 +16,8 @@ const cycle = (...ids: string[]): LayoutEdgeInput[] =>
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
   Math.hypot(a.x - b.x, a.y - b.y);
 
+const TAU = 2 * Math.PI;
+
 describe('placement', () => {
   it('puts every node at the same distance from the origin', () => {
     const { nodes, radius } = circularLayout(
@@ -28,18 +30,35 @@ describe('placement', () => {
     }
   });
 
-  it('starts at the top and steps clockwise', () => {
-    const { nodes } = circularLayout(
-      ['A', 'B', 'C', 'D'].map((id) => box(id)),
-      cycle('A', 'B', 'C', 'D')
+  it('spaces nodes at equal angles — the regular polygon a designer would draw', () => {
+    const { nodes, order } = circularLayout(
+      [box('A', 200, 60), box('B', 40, 40), box('C', 120, 50), box('D', 40, 40), box('E', 90, 45)],
+      cycle('A', 'B', 'C', 'D', 'E')
     );
-    const a = nodes.find((n) => n.id === 'A')!;
-    const b = nodes.find((n) => n.id === 'B')!;
-    // A sits at the top (negative y in SVG coordinates), centered.
-    expect(a.x).toBeCloseTo(0, 6);
-    expect(a.y).toBeLessThan(0);
-    // Clockwise in SVG space: the next node moves to the right.
-    expect(b.x).toBeGreaterThan(0);
+    const angleOf = new Map(nodes.map((n) => [n.id, n.angle]));
+    const step = TAU / order.length;
+    for (let i = 0; i < order.length; i++) {
+      const here = angleOf.get(order[i]!)!;
+      const next = angleOf.get(order[(i + 1) % order.length]!)!;
+      const gap = (((next - here) % TAU) + TAU) % TAU;
+      expect(gap).toBeCloseTo(step, 6);
+    }
+  });
+
+  it('mirrors side pairs at identical heights, first node centered on top', () => {
+    const { nodes, order } = circularLayout(
+      ['A', 'B', 'C', 'D', 'E'].map((id) => box(id)),
+      cycle('A', 'B', 'C', 'D', 'E')
+    );
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const top = byId.get(order[0]!)!;
+    expect(top.x).toBeCloseTo(0, 6);
+    expect(top.y).toBeLessThan(0);
+    // order[1]/order[4] and order[2]/order[3] are mirror pairs.
+    expect(byId.get(order[1]!)!.y).toBeCloseTo(byId.get(order[4]!)!.y, 6);
+    expect(byId.get(order[1]!)!.x).toBeCloseTo(-byId.get(order[4]!)!.x, 6);
+    expect(byId.get(order[2]!)!.y).toBeCloseTo(byId.get(order[3]!)!.y, 6);
+    expect(byId.get(order[2]!)!.x).toBeCloseTo(-byId.get(order[3]!)!.x, 6);
   });
 
   it('keeps adjacent nodes at least their footprint plus spacing apart', () => {
@@ -80,7 +99,6 @@ describe('placement', () => {
 
 describe('ordering', () => {
   it('follows edges so cycle neighbors sit beside each other, whatever the input order', () => {
-    // Written scrambled: A,C,E,B,D — the cycle is still A→B→C→D→E→A.
     const { order } = circularLayout(
       ['A', 'C', 'E', 'B', 'D'].map((id) => box(id)),
       cycle('A', 'B', 'C', 'D', 'E')
@@ -93,9 +111,7 @@ describe('ordering', () => {
     }
   });
 
-  it('saves a chord for last — the walk prefers the neighbor with fewer edges', () => {
-    // The chord A→C is written first. A greedy walk that takes it
-    // puts C beside A and turns two real cycle edges into chords.
+  it('saves a chord for last — declaration continuity from the best start', () => {
     const { order } = circularLayout(
       ['A', 'C', 'B', 'D', 'E'].map((id) => box(id)),
       [edge('A', 'C'), ...cycle('A', 'B', 'C', 'D', 'E')]
@@ -119,21 +135,73 @@ describe('ordering', () => {
 });
 
 describe('edge routing', () => {
-  it('routes neighbor edges along the circle', () => {
-    const { edges, radius } = circularLayout(
-      ['A', 'B', 'C', 'D'].map((id) => box(id)),
-      cycle('A', 'B', 'C', 'D')
+  const onBorder = (p: { x: number; y: number }, n: { x: number; y: number }, w: number, h: number) => {
+    const dx = Math.abs(p.x - n.x);
+    const dy = Math.abs(p.y - n.y);
+    const eps = 1e-6;
+    const onVertical = Math.abs(dx - w / 2) < eps && dy <= h / 2 + eps;
+    const onHorizontal = Math.abs(dy - h / 2) < eps && dx <= w / 2 + eps;
+    return onVertical || onHorizontal;
+  };
+
+  it('starts and ends every path on the node border, never at the center', () => {
+    const { edges, nodes } = circularLayout(
+      ['A', 'B', 'C', 'D', 'E'].map((id) => box(id)),
+      [...cycle('A', 'B', 'C', 'D', 'E'), edge('A', 'C'), edge('A', 'A')]
     );
+    const byId = new Map(nodes.map((n) => [n.id, n]));
     for (const e of edges) {
-      expect(e.points.length).toBeGreaterThanOrEqual(3);
-      for (const p of e.points) {
-        expect(Math.hypot(p.x, p.y)).toBeCloseTo(radius, 4);
+      const first = e.points[0]!;
+      const last = e.points[e.points.length - 1]!;
+      expect(onBorder(first, byId.get(e.start)!, 80, 40)).toBe(true);
+      expect(onBorder(last, byId.get(e.end)!, 80, 40)).toBe(true);
+    }
+  });
+
+  it('sends a neighbor edge through the middle of the gap, hugging the ring', () => {
+    const { edges, nodes, radius } = circularLayout(
+      ['A', 'B', 'C', 'D', 'E'].map((id) => box(id)),
+      cycle('A', 'B', 'C', 'D', 'E')
+    );
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    for (const e of edges) {
+      expect(e.onRim).toBe(true);
+      const mid = e.points[Math.floor(e.points.length / 2)]!;
+      // The curve's waist stays in the ring's band — near the rim,
+      // never sagging far inside nor ballooning outside…
+      const r = Math.hypot(mid.x, mid.y);
+      expect(r).toBeGreaterThan(radius * 0.8);
+      expect(r).toBeLessThan(radius * 1.02);
+      // …and sits at the half-angle between the two nodes.
+      const a = byId.get(e.start)!;
+      const b = byId.get(e.end)!;
+      const midAngle = Math.atan2(mid.y, mid.x);
+      const expected = Math.atan2((a.y + b.y) / 2, (a.x + b.x) / 2);
+      expect(Math.abs(midAngle - expected)).toBeLessThan(0.02);
+    }
+  });
+
+  it('never wanders inside a node box on its way', () => {
+    const wide = ['A', 'B', 'C', 'D', 'E'].map((id) => box(id, 180, 60));
+    const { edges, nodes } = circularLayout(wide, [
+      ...cycle('A', 'B', 'C', 'D', 'E'),
+      edge('B', 'E'),
+    ]);
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    for (const e of edges) {
+      for (const p of e.points.slice(1, -1)) {
+        for (const n of nodes) {
+          const owner = byId.get(n.id)!;
+          const inside =
+            Math.abs(p.x - owner.x) < 180 / 2 - 0.5 && Math.abs(p.y - owner.y) < 60 / 2 - 0.5;
+          expect(inside, `edge ${e.id} point inside ${n.id}`).toBe(false);
+        }
       }
     }
   });
 
-  it('sends the arc the short way round, never through the far side', () => {
-    const { edges, nodes, radius } = circularLayout(
+  it('takes the short way: a neighbor path is barely longer than its chord', () => {
+    const { edges, nodes } = circularLayout(
       ['A', 'B', 'C', 'D', 'E', 'F'].map((id) => box(id)),
       cycle('A', 'B', 'C', 'D', 'E', 'F')
     );
@@ -146,29 +214,58 @@ describe('edge routing', () => {
       for (let i = 1; i < e.points.length; i++) {
         length += dist(e.points[i - 1]!, e.points[i]!);
       }
-      // A short-way arc between neighbors on a hexagon is barely longer than
-      // its chord; the long way round would be five times that.
       expect(length).toBeLessThan(straight * 1.5);
-      expect(length).toBeGreaterThanOrEqual(straight - 1e-6);
-      // The arc stays on the circle: radius never exceeded.
-      for (const p of e.points) {
-        expect(Math.hypot(p.x, p.y)).toBeLessThanOrEqual(radius + 1e-6);
-      }
     }
   });
 
-  it('bows a non-neighbor edge inward, off the rim', () => {
+  it('lands the arrow flush: the final segment points into the border it meets', () => {
+    const { edges, nodes } = circularLayout(
+      ['A', 'B', 'C', 'D', 'E'].map((id) => box(id)),
+      cycle('A', 'B', 'C', 'D', 'E')
+    );
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    for (const e of edges) {
+      const last = e.points[e.points.length - 1]!;
+      const prev = e.points[e.points.length - 2]!;
+      const target = byId.get(e.end)!;
+      // Walking the final segment direction from the endpoint must
+      // enter the box, not skim along its border.
+      const dir = { x: last.x - prev.x, y: last.y - prev.y };
+      const len = Math.hypot(dir.x, dir.y);
+      const probe = { x: last.x + (dir.x / len) * 3, y: last.y + (dir.y / len) * 3 };
+      const inside =
+        Math.abs(probe.x - target.x) < 80 / 2 && Math.abs(probe.y - target.y) < 40 / 2;
+      expect(inside, `edge ${e.id} arrow does not enter its target`).toBe(true);
+    }
+  });
+
+  it('bows a non-neighbor chord toward the middle, off the rim', () => {
     const ids = ['A', 'B', 'C', 'D', 'E', 'F'];
     const { edges, radius } = circularLayout(
       ids.map((id) => box(id)),
-      [...cycle(...ids), edge('A', 'D')]
+      [...cycle(...ids), edge('A', 'C')]
     );
-    const chord = edges.find((e) => e.id === 'A-D')!;
+    const chord = edges.find((e) => e.id === 'A-C')!;
     const mid = chord.points[Math.floor(chord.points.length / 2)]!;
     expect(Math.hypot(mid.x, mid.y)).toBeLessThan(radius * 0.9);
   });
 
-  it('draws a self-loop as a petal outside the rim, anchored on its node', () => {
+  it('swerves a diameter off the center, and mirrored directions swerve apart', () => {
+    const ids = ['A', 'B', 'C', 'D', 'E', 'F'];
+    const { edges, radius } = circularLayout(
+      ids.map((id) => box(id)),
+      [...cycle(...ids), edge('A', 'D'), { id: 'D-A', start: 'D', end: 'A' }],
+      { swerve: 0.25 }
+    );
+    const midPoint = (e: (typeof edges)[number]) => e.points[Math.floor(e.points.length / 2)]!;
+    const there = midPoint(edges.find((e) => e.id === 'A-D')!);
+    const back = midPoint(edges.find((e) => e.id === 'D-A')!);
+    expect(Math.hypot(there.x, there.y)).toBeGreaterThan(radius * 0.05);
+    expect(Math.hypot(back.x, back.y)).toBeGreaterThan(radius * 0.05);
+    expect(there.x * back.x + there.y * back.y).toBeLessThan(0);
+  });
+
+  it('draws a self-loop as a petal outside the rim, anchored on its node border', () => {
     const { edges, nodes, radius } = circularLayout(
       ['A', 'B', 'C'].map((id) => box(id)),
       [...cycle('A', 'B', 'C'), edge('A', 'A')]
@@ -176,8 +273,7 @@ describe('edge routing', () => {
     const loop = edges.find((e) => e.id === 'A-A')!;
     const a = nodes.find((n) => n.id === 'A')!;
     expect(loop.points.length).toBeGreaterThanOrEqual(5);
-    expect(dist(loop.points[0]!, a)).toBeCloseTo(0, 6);
-    expect(dist(loop.points[loop.points.length - 1]!, a)).toBeCloseTo(0, 6);
+    expect(dist(loop.points[0]!, a)).toBeLessThanOrEqual(Math.hypot(40, 20) + 1e-6);
     const apex = Math.max(...loop.points.map((p) => Math.hypot(p.x, p.y)));
     expect(apex).toBeGreaterThan(radius * 1.05);
   });
@@ -188,65 +284,10 @@ describe('edge routing', () => {
       ids.map((id) => box(id)),
       [...cycle(...ids), { id: 'back', start: 'B', end: 'A' }]
     );
-    const there = edges.find((e) => e.id === 'A-B')!;
-    const back = edges.find((e) => e.id === 'back')!;
-    const midThere = there.points[Math.floor(there.points.length / 2)]!;
-    const midBack = back.points[Math.floor(back.points.length / 2)]!;
-    expect(dist(midThere, midBack)).toBeGreaterThan(8);
-  });
-
-  it('keeps endpoints at the node centers so mermaid can trim at the boundary', () => {
-    const { edges, nodes } = circularLayout(
-      ['A', 'B', 'C'].map((id) => box(id)),
-      cycle('A', 'B', 'C')
-    );
-    const byId = new Map(nodes.map((n) => [n.id, n]));
-    for (const e of edges) {
-      const first = e.points[0]!;
-      const last = e.points[e.points.length - 1]!;
-      expect(dist(first, byId.get(e.start)!)).toBeCloseTo(0, 6);
-      expect(dist(last, byId.get(e.end)!)).toBeCloseTo(0, 6);
-    }
-  });
-
-  it('keeps every interior point outside both endpoint boxes — mermaid intersects with the point beside the center', () => {
-    const wide = [box('A', 220, 60), box('B', 220, 60), box('C', 220, 60)];
-    const { edges, nodes } = circularLayout(wide, cycle('A', 'B', 'C'));
-    const byId = new Map(nodes.map((n) => [n.id, n]));
-    const inside = (p: { x: number; y: number }, id: string, w: number, h: number) => {
-      const n = byId.get(id)!;
-      return Math.abs(p.x - n.x) < w / 2 && Math.abs(p.y - n.y) < h / 2;
-    };
-    for (const e of edges) {
-      const interior = e.points.slice(1, -1);
-      expect(interior.length).toBeGreaterThan(0);
-      for (const p of interior) {
-        expect(inside(p, e.start, 220, 60)).toBe(false);
-        expect(inside(p, e.end, 220, 60)).toBe(false);
-      }
-    }
-  });
-
-  it('swerves a diameter off the center, and mirrored directions swerve apart', () => {
-    const ids = ['A', 'B', 'C', 'D', 'E', 'F'];
-    const { edges, radius } = circularLayout(
-      ids.map((id) => box(id)),
-      [...cycle(...ids), edge('A', 'D'), { id: 'D-A', start: 'D', end: 'A' }],
-      { swerve: 0.25 }
-    );
-    const midOf = (e: (typeof edges)[number]) => {
-      const m = e.points[Math.floor(e.points.length / 2)]!;
-      return Math.hypot(m.x, m.y);
-    };
-    const there = edges.find((e) => e.id === 'A-D')!;
-    const back = edges.find((e) => e.id === 'D-A')!;
-    // Off the center: a straight diameter's midpoint would sit at 0.
-    expect(midOf(there)).toBeGreaterThan(radius * 0.05);
-    expect(midOf(back)).toBeGreaterThan(radius * 0.05);
-    // Left-of-travel is opposite sides for opposite directions.
-    const mThere = there.points[Math.floor(there.points.length / 2)]!;
-    const mBack = back.points[Math.floor(back.points.length / 2)]!;
-    expect(mThere.x * mBack.x + mThere.y * mBack.y).toBeLessThan(0);
+    const midOf = (e: (typeof edges)[number]) => e.points[Math.floor(e.points.length / 2)]!;
+    const there = midOf(edges.find((e) => e.id === 'A-B')!);
+    const back = midOf(edges.find((e) => e.id === 'back')!);
+    expect(dist(there, back)).toBeGreaterThan(8);
   });
 
   it('mirrors the two-node pair into a lens, one arc each side', () => {

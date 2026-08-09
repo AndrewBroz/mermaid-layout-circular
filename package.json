@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "description": "Circular layout engine for mermaid flowcharts — nodes on a circle, edges as arcs",
   "type": "module",
-  "module": "dist/mermaid-layout-circular.mjs",
+  "module": "dist/mermaid-layout-circular.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/mermaid-layout-circular.mjs"
+      "import": "./dist/mermaid-layout-circular.js"
     }
   },
   "files": [

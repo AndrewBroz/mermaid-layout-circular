@@ -59,6 +59,12 @@ Subgraphs are not supported yet. A diagram containing one still renders,
 but the subgraph box is skipped and a warning is logged. Diagram types
 other than flowcharts are out of scope, since each one owns its layout.
 
+To use the layout in Obsidian, install
+[obsidian-mermaid-circular](https://github.com/AndrewBroz/obsidian-mermaid-circular),
+a small plugin that registers it with the mermaid instance Obsidian
+already bundles. Diagrams in notes then opt in with the same
+frontmatter.
+
 ## Options
 
 Mermaid's config schema has no slot for layout engine options, so the

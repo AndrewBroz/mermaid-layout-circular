@@ -97,6 +97,67 @@ describe('placement', () => {
   });
 });
 
+describe('option hygiene', () => {
+  it('ignores an explicitly undefined option instead of clobbering the default', () => {
+    const { radius, nodes } = circularLayout(
+      ['A', 'B', 'C'].map((id) => box(id)),
+      cycle('A', 'B', 'C'),
+      { spacing: undefined }
+    );
+    expect(Number.isFinite(radius)).toBe(true);
+    for (const n of nodes) {
+      expect(Number.isFinite(n.x)).toBe(true);
+      expect(Number.isFinite(n.y)).toBe(true);
+    }
+  });
+});
+
+describe('degenerate graphs', () => {
+  it('draws a self-loop on a lone node as a petal, not a point', () => {
+    const { edges } = circularLayout([box('A')], [edge('A', 'A')]);
+    const loop = edges[0]!;
+    expect(loop.points.length).toBeGreaterThanOrEqual(5);
+    const apex = Math.max(...loop.points.map((p) => Math.hypot(p.x, p.y)));
+    expect(apex).toBeGreaterThan(Math.hypot(40, 20));
+  });
+
+  it('separates same-direction duplicate edges between two nodes', () => {
+    const { edges } = circularLayout(
+      [box('A'), box('B')],
+      [edge('A', 'B'), { id: 'again', start: 'A', end: 'B' }]
+    );
+    const midOf = (e: (typeof edges)[number]) => e.points[Math.floor(e.points.length / 2)]!;
+    const [a, b] = edges.map(midOf);
+    expect(dist(a!, b!)).toBeGreaterThan(8);
+  });
+
+  it('never doubles back: every segment advances along the path', () => {
+    const ids = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    const { edges } = circularLayout(
+      ids.map((id) => box(id)),
+      [...cycle(...ids), edge('A', 'C'), edge('B', 'D'), edge('A', 'E')],
+      { bow: 0.8 }
+    );
+    for (const e of edges) {
+      for (let i = 2; i < e.points.length; i++) {
+        const prev = {
+          x: e.points[i - 1]!.x - e.points[i - 2]!.x,
+          y: e.points[i - 1]!.y - e.points[i - 2]!.y,
+        };
+        const here = {
+          x: e.points[i]!.x - e.points[i - 1]!.x,
+          y: e.points[i]!.y - e.points[i - 1]!.y,
+        };
+        const dot = prev.x * here.x + prev.y * here.y;
+        // A real double-back is strongly negative (segments are ~10px,
+        // so reversal reads in the hundreds); -1 tolerates the
+        // sub-pixel sagitta where a straight tail rejoins its arc.
+        expect(dot, `${e.id} reverses at point ${i}`).toBeGreaterThan(-1);
+      }
+    }
+  });
+});
+
 describe('ordering', () => {
   it('follows edges so cycle neighbors sit beside each other, whatever the input order', () => {
     const { order } = circularLayout(

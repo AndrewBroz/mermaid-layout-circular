@@ -77,6 +77,22 @@ update the README beside it.
   the two-node lens was lopsided because sibling spread applied to a
   pair the diameter tie already mirrors; at n = 2 the sibling key is
   the directed pair.
+- **2026-08-08 — The review's harvest.** A ten-finding code review
+  (high effort), nine fixed the same day: an undefined `spacing`
+  from mermaid's config could ride over the default and turn the
+  whole layout NaN; the peer floor rose to `^11.12.0`, the earliest
+  release verified to carry `skipIntersect` and the label `data-id`
+  (11.0.2 has neither — on it, the arrowhead and label machinery
+  silently degrades); a self-loop on a lone node now draws its
+  petal; a dropped edge no longer leaves its label at the origin;
+  the two-node sibling key mismatch meant duplicate same-direction
+  edges overlapped; the parallel-edge fan now scales instead of
+  saturating at the clamp; the label push cap scales with label
+  size; node and edge insertion went sequential (Promise.all made
+  z-order nondeterministic for zero speedup); Bézier tails clamp to
+  their sampled neighbor so a deep bow cannot double back. Not
+  fixed, documented: mermaid measures HTML labels in screen pixels,
+  so a CSS-transformed container skews collision checks.
 - **2026-08-08 — The helpers seam is accepted risk.** mermaid marks
   `InternalHelpers` deprecated for external use. elk and tidy-tree
   ship on it anyway; so does this. The demo is the canary on

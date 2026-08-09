@@ -302,12 +302,20 @@ const unit = (v: Point): Point => {
  */
 const withTails = (points: Point[], d0: Point, d1: Point, tail: number): Point[] => {
   const first = points[0]!;
+  const second = points[1]!;
   const last = points[points.length - 1]!;
+  const penult = points[points.length - 2]!;
+  // A tail longer than the gap to its neighboring sample would
+  // overshoot it and double the path back on itself. The control
+  // polygon overestimates curve length, so clamp against the real
+  // sampled spacing.
+  const startTail = Math.min(tail, 0.9 * Math.hypot(second.x - first.x, second.y - first.y));
+  const endTail = Math.min(tail, 0.9 * Math.hypot(last.x - penult.x, last.y - penult.y));
   return [
     first,
-    { x: first.x + d0.x * tail, y: first.y + d0.y * tail },
+    { x: first.x + d0.x * startTail, y: first.y + d0.y * startTail },
     ...points.slice(1, -1),
-    { x: last.x - d1.x * tail, y: last.y - d1.y * tail },
+    { x: last.x - d1.x * endTail, y: last.y - d1.y * endTail },
     last,
   ];
 };
@@ -369,16 +377,33 @@ export const circularLayout = (
   edges: LayoutEdgeInput[],
   options: CircularLayoutOptions = {}
 ): CircularLayoutResult => {
-  const { spacing, startAngle, ordering, bow, swerve, samples } = { ...defaults, ...options };
+  // An option that is present but undefined must not clobber its
+  // default — mermaid's config often supplies exactly that shape.
+  const given = Object.fromEntries(
+    Object.entries(options).filter(([, value]) => value !== undefined)
+  ) as CircularLayoutOptions;
+  const { spacing, startAngle, ordering, bow, swerve, samples } = { ...defaults, ...given };
 
   if (nodes.length === 0) {
     return { nodes: [], edges: [], order: [], radius: 0 };
   }
   if (nodes.length === 1) {
     const only = nodes[0]!;
+    const reach = footprint(only) + spacing;
     return {
       nodes: [{ id: only.id, x: 0, y: 0, angle: 0 }],
-      edges: edges.map((e) => ({ ...e, points: [], onRim: false })),
+      edges: edges.map((e) => {
+        if (e.start !== only.id || e.end !== only.id) {
+          return { ...e, points: [], onRim: false };
+        }
+        // A self-loop on a lone node: a petal reaching upward from
+        // the top edge, the same gesture as on a ring.
+        const t1 = { x: -reach * Math.sin(0.45), y: -reach * Math.cos(0.45) };
+        const t2 = { x: reach * Math.sin(0.45), y: -reach * Math.cos(0.45) };
+        const p0 = { x: -only.width / 4, y: -only.height / 2 };
+        const p3 = { x: only.width / 4, y: -only.height / 2 };
+        return { ...e, points: cubic(p0, t1, t2, p3, samples), onRim: false };
+      }),
       order: [only.id],
       radius: 0,
     };
@@ -413,12 +438,15 @@ export const circularLayout = (
 
   const position = new Map(order.map((id, i) => [id, i]));
 
-  // Edges sharing an unordered pair of ends must separate, or two
-  // opposite arrows draw as one line. Rim pairs split radially at the
-  // gap's midpoint; chord pairs split by bow depth.
+  // Edges sharing a pair of ends must separate, or two arrows draw
+  // as one line. Rim pairs split radially; chord pairs split by bow
+  // depth. At two nodes the key is the directed pair, because the
+  // diameter tie already mirrors opposite directions onto opposite
+  // sides and only same-direction duplicates still coincide.
   const pairIndex = new Map<string, number>();
   const pairCount = new Map<string, number>();
-  const pairKeyOf = (e: LayoutEdgeInput) => [e.start, e.end].sort().join(' ');
+  const pairKeyOf = (e: LayoutEdgeInput) =>
+    n === 2 ? `${e.start}>${e.end}` : [e.start, e.end].sort().join(' ');
   for (const e of edges) {
     pairCount.set(pairKeyOf(e), (pairCount.get(pairKeyOf(e)) ?? 0) + 1);
   }
@@ -446,12 +474,8 @@ export const circularLayout = (
       return { ...e, points: cubic(flank(-1), t1, t2, flank(1), samples), onRim: false };
     }
 
-    // At two nodes the diameter tie already mirrors the two
-    // directions onto opposite sides — spreading them again would
-    // put the lens's halves on different circles. Sibling spread
-    // there applies only to same-direction duplicates.
-    const key = n === 2 ? `${e.start}>${e.end}` : pairKeyOf(e);
-    const siblings = pairCount.get(key) ?? 1;
+    const key = pairKeyOf(e);
+    const siblings = pairCount.get(key)!;
     const index = pairIndex.get(key) ?? 0;
     pairIndex.set(key, index + 1);
     const spread = siblings === 1 ? 0 : index - (siblings - 1) / 2;
@@ -470,7 +494,11 @@ export const circularLayout = (
       const boxB = boxOf(e.end);
       const maxOffset =
         0.6 * Math.min(boxA.width / 2, boxA.height / 2, boxB.width / 2, boxB.height / 2);
-      const offset = Math.max(-maxOffset, Math.min(maxOffset, spread * 24));
+      // Scale the whole fan uniformly rather than clamping each
+      // offset: clamping saturates, and saturated siblings coincide.
+      const widestSpread = ((siblings - 1) / 2) * 24;
+      const fanScale = widestSpread > maxOffset ? maxOffset / widestSpread : 1;
+      const offset = spread * 24 * fanScale;
       const arcRadius = radius + offset;
       const delta = shortWay(a, b);
       const midAngle = a + delta / 2;

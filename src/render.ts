@@ -35,25 +35,26 @@ export const render = async (
   const nodeDb = new Map<string, LayoutNode>();
   const domOf = new Map<string, { attr: (name: string, value: string) => unknown }>();
 
-  await Promise.all(
-    data4Layout.nodes.map(async (node) => {
-      if (node.isGroup) {
-        // Subgraphs have no circular story yet; a cycle drawn in a
-        // note is a flat graph. Loud, not silent.
-        log.warn(`circular layout: subgraph ${node.id} ignored — clusters are not supported`);
-        return;
-      }
-      nodeDb.set(node.id, node);
-      const nodeEl = await insertNode(nodesEl, node, {
-        config: data4Layout.config,
-        dir: data4Layout.direction ?? 'TB',
-      });
-      const box = (nodeEl.node() as SVGGraphicsElement).getBBox();
-      node.width = box.width;
-      node.height = box.height;
-      domOf.set(node.id, nodeEl as unknown as { attr: (name: string, value: string) => unknown });
-    })
-  );
+  // Sequential on purpose: the work is DOM insertion plus a forced
+  // reflow per getBBox, so concurrency buys nothing, and interleaved
+  // appends would make stacking order at overlaps vary run to run.
+  for (const node of data4Layout.nodes) {
+    if (node.isGroup) {
+      // Subgraphs have no circular story yet; a cycle drawn in a
+      // note is a flat graph. Loud, not silent.
+      log.warn(`circular layout: subgraph ${node.id} ignored — clusters are not supported`);
+      continue;
+    }
+    nodeDb.set(node.id, node);
+    const nodeEl = await insertNode(nodesEl, node, {
+      config: data4Layout.config,
+      dir: data4Layout.direction ?? 'TB',
+    });
+    const box = (nodeEl.node() as SVGGraphicsElement).getBBox();
+    node.width = box.width;
+    node.height = box.height;
+    domOf.set(node.id, nodeEl as unknown as { attr: (name: string, value: string) => unknown });
+  }
 
   const measured = [...nodeDb.values()].map((node) => ({
     id: node.id,
@@ -66,8 +67,9 @@ export const render = async (
     end: edge.end ?? '',
   }));
 
+  const nodeSpacing = data4Layout.config.flowchart?.nodeSpacing;
   const layoutOptions: CircularLayoutOptions = {
-    spacing: data4Layout.config.flowchart?.nodeSpacing,
+    ...(nodeSpacing !== undefined && { spacing: nodeSpacing }),
     ...circularLayoutOptions(),
   };
   const result = circularLayout(measured, layoutEdges, layoutOptions);
@@ -85,17 +87,18 @@ export const render = async (
 
   const routedById = new Map(result.edges.map((e) => [e.id, e]));
 
-  await Promise.all(
-    data4Layout.edges.map(async (edge) => {
-      await insertEdgeLabel(edgeLabels, edge);
-
+  for (const edge of data4Layout.edges) {
+    {
       const startNode = nodeDb.get(edge.start ?? '');
       const endNode = nodeDb.get(edge.end ?? '');
       const routed = routedById.get(edge.id);
       if (!startNode || !endNode) {
+        // Checked before inserting the label: a dropped edge's label
+        // would otherwise sit unpositioned at the origin.
         log.warn(`circular layout: edge ${edge.id} dropped — an endpoint is missing`);
-        return;
+        continue;
       }
+      await insertEdgeLabel(edgeLabels, edge);
 
       const points: Point[] =
         routed && routed.points.length > 0
@@ -137,7 +140,10 @@ export const render = async (
                 Math.abs(at.x - (node.x ?? 0)) < (labelW + breath + (node.width ?? 0)) / 2 &&
                 Math.abs(at.y - (node.y ?? 0)) < (labelH + breath + (node.height ?? 0)) / 2
             );
-          for (let push = 8; collides(labelAt) && push <= 64; push += 8) {
+          // The cap scales with the label: a wide label needs a
+          // longer slide before it can possibly clear.
+          const maxPush = 64 + labelW + labelH;
+          for (let push = 8; collides(labelAt) && push <= maxPush; push += 8) {
             labelAt = { x: (mid.x * (r + push)) / r, y: (mid.y * (r + push)) / r };
           }
         }
@@ -172,6 +178,6 @@ export const render = async (
         )?.parentNode as SVGGElement | null;
         wrapper?.setAttribute('transform', `translate(${labelAt.x}, ${labelAt.y})`);
       }
-    })
-  );
+    }
+  }
 };

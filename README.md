@@ -32,6 +32,8 @@ figures draw the Krebs cycle or a water cycle with side effects:
 
 ![An eight-node Krebs cycle ring with Acetyl-CoA feeding in from above and CO2 and NADH branching outward](docs/media/krebs-cycle.png)
 
+![The water cycle ring with the Sun feeding Evaporation from above, Groundwater branching off Collection, and a Flooding-to-Damage chain hanging off Precipitation](docs/media/water-cycle-spurs.png)
+
 ![Ten months arranged in a circle, arrows riding the ring between them](docs/media/ten-nodes.png)
 
 `CLAUDE.md` is a symlink to this file, so human and model readers see the

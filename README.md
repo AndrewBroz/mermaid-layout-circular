@@ -34,7 +34,31 @@ mermaid.registerLayoutLoaders(circularLayouts);
 
 The full flowchart language keeps working — node shapes, edge labels,
 classes, `look: handDrawn` — only placement changes. Non-flowchart
-diagrams are out of scope; they own their layouts.
+diagrams are out of scope; they own their layouts. Subgraphs are not
+circular-aware yet: a cluster is skipped with a loud warning.
+
+## Knobs
+
+Mermaid's config schema has no slot for layout-engine options, so the
+knobs are set programmatically, beside registration:
+
+```ts
+import { setCircularLayoutOptions } from 'mermaid-layout-circular';
+setCircularLayoutOptions({ spacing: 60, bow: 0.4 });
+```
+
+The knobs and their defaults live in `CircularLayoutOptions` and
+`defaults` (`src/layout.ts`); every default was chosen against the
+visual record in `trials/`, and the verdicts are logged in
+`docs/DECISIONS.md`. `flowchart.nodeSpacing` from mermaid's own
+config seeds `spacing` when no knob overrides it.
+
+## The demo
+
+`npm run dev` serves `demo/` — the showcase gallery at `/` and the
+option-comparison matrix at `/trials.html?suite=bow|swerve|ordering|
+spacing|samples`. The committed screenshots in `trials/` are the
+visual record of how the defaults were chosen.
 
 ## Shape of the code
 

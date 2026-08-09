@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>mermaid-layout-circular — demo</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #23272e;
+        --paper: #fbfaf7;
+        --line: #d8d4cb;
+      }
+      body {
+        margin: 0;
+        padding: 2rem;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: Georgia, 'Times New Roman', serif;
+      }
+      h1 {
+        font-size: 1.4rem;
+        font-weight: normal;
+        margin: 0 0 0.25rem;
+      }
+      p.sub {
+        margin: 0 0 2rem;
+        font-style: italic;
+        opacity: 0.7;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+        gap: 1.5rem;
+      }
+      figure {
+        margin: 0;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: white;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+      }
+      figure.wide {
+        grid-column: 1 / -1;
+      }
+      figcaption {
+        font-size: 0.85rem;
+        margin-bottom: 0.75rem;
+        opacity: 0.75;
+      }
+      .diagram {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 300px;
+      }
+      .diagram svg {
+        max-width: 100%;
+        height: auto;
+      }
+      .error {
+        color: #a33;
+        font-family: monospace;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>mermaid-layout-circular</h1>
+    <p class="sub">the same flowchart language, placed on a circle</p>
+    <div class="grid" id="gallery"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

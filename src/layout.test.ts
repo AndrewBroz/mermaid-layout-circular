@@ -193,4 +193,32 @@ describe('edge routing', () => {
       expect(dist(last, byId.get(e.end)!)).toBeCloseTo(0, 6);
     }
   });
+
+  it('keeps every interior point outside both endpoint boxes — mermaid intersects with the point beside the center', () => {
+    const wide = [box('A', 220, 60), box('B', 220, 60), box('C', 220, 60)];
+    const { edges, nodes } = circularLayout(wide, cycle('A', 'B', 'C'));
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const inside = (p: { x: number; y: number }, id: string, w: number, h: number) => {
+      const n = byId.get(id)!;
+      return Math.abs(p.x - n.x) < w / 2 && Math.abs(p.y - n.y) < h / 2;
+    };
+    for (const e of edges) {
+      const interior = e.points.slice(1, -1);
+      expect(interior.length).toBeGreaterThan(0);
+      for (const p of interior) {
+        expect(inside(p, e.start, 220, 60)).toBe(false);
+        expect(inside(p, e.end, 220, 60)).toBe(false);
+      }
+    }
+  });
+
+  it('mirrors the two-node pair into a lens, one arc each side', () => {
+    const { edges } = circularLayout(
+      [box('Ping'), box('Pong')],
+      [edge('Ping', 'Pong'), edge('Pong', 'Ping')]
+    );
+    const midOf = (e: (typeof edges)[number]) => e.points[Math.floor(e.points.length / 2)]!;
+    const [a, b] = edges.map(midOf);
+    expect(Math.sign(a!.x)).not.toBe(Math.sign(b!.x));
+  });
 });

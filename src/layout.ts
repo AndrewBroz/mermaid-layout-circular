@@ -162,7 +162,13 @@ const onCircle = (radius: number, angle: number): Point => ({
   y: radius * Math.sin(angle),
 });
 
-/** Sample an arc on the rim from angle a to angle b, the short way. */
+/**
+ * Sample an arc on the rim from angle a to angle b, the short way.
+ * A diameter has no short way; the tie always resolves clockwise,
+ * which mirrors a two-node pair into a lens by itself — the two
+ * directions start from opposite nodes, so one clockwise half is the
+ * right rim and the other is the left.
+ */
 const rimArc = (radius: number, a: number, b: number, samples: number): Point[] => {
   let delta = (b - a) % TAU;
   if (delta > Math.PI) {
@@ -171,11 +177,38 @@ const rimArc = (radius: number, a: number, b: number, samples: number): Point[] 
   if (delta < -Math.PI) {
     delta += TAU;
   }
+  if (Math.abs(Math.abs(delta) - Math.PI) < 1e-9) {
+    delta = Math.PI;
+  }
   const points: Point[] = [];
   for (let i = 0; i <= samples; i++) {
     points.push(onCircle(radius, a + (delta * i) / samples));
   }
   return points;
+};
+
+interface BoxAt extends Point {
+  width: number;
+  height: number;
+}
+
+const insideBox = (p: Point, b: BoxAt) =>
+  Math.abs(p.x - b.x) < b.width / 2 && Math.abs(p.y - b.y) < b.height / 2;
+
+/**
+ * Drop interior samples that fall inside either endpoint's box.
+ * mermaid's insertEdge discards the first and last point (the node
+ * centers) and asks each node shape to intersect the line toward the
+ * next point — which only lands on the true boundary if that next
+ * point is already outside the shape.
+ */
+const clipToBoxes = (points: Point[], start: BoxAt, end: BoxAt): Point[] => {
+  const interior = points.slice(1, -1).filter((p) => !insideBox(p, start) && !insideBox(p, end));
+  if (interior.length === 0) {
+    const mid = points[Math.floor(points.length / 2)]!;
+    interior.push(mid);
+  }
+  return [points[0]!, ...interior, points[points.length - 1]!];
 };
 
 /**
@@ -296,6 +329,11 @@ export const circularLayout = (
     pairCount.set(key, (pairCount.get(key) ?? 0) + 1);
   }
 
+  const boxOf = (id: string): BoxAt => {
+    const n = byId.get(id)!;
+    return { ...onCircle(radius, angleOf.get(id)!), width: n.width, height: n.height };
+  };
+
   const routed: RoutedEdge[] = edges.map((e) => {
     const a = angleOf.get(e.start);
     const b = angleOf.get(e.end);
@@ -304,7 +342,8 @@ export const circularLayout = (
     }
     if (e.start === e.end) {
       const reach = footprint(byId.get(e.start)!) * 2 + spacing;
-      return { ...e, points: petal(radius, a, reach, samples), onRim: false };
+      const looped = petal(radius, a, reach, samples);
+      return { ...e, points: clipToBoxes(looped, boxOf(e.start), boxOf(e.end)), onRim: false };
     }
     const key = pairKeyOf(e);
     const siblings = pairCount.get(key)!;
@@ -317,7 +356,11 @@ export const circularLayout = (
     const points = neighbors
       ? rimArc(radius, a, b, samples)
       : bowedChord(onCircle(radius, a), onCircle(radius, b), bow, samples);
-    return { ...e, points: fanOut(points, offset), onRim: neighbors };
+    return {
+      ...e,
+      points: clipToBoxes(fanOut(points, offset), boxOf(e.start), boxOf(e.end)),
+      onRim: neighbors,
+    };
   });
 
   return { nodes: placed, edges: routed, order, radius };

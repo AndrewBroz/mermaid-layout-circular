@@ -10,6 +10,7 @@ const circularLayouts: LayoutLoaderDefinition[] = [
 
 export default circularLayouts;
 export { circularLayout } from './layout.js';
+export { setCircularLayoutOptions } from './options.js';
 export type {
   CircularLayoutOptions,
   CircularLayoutResult,

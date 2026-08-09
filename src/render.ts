@@ -1,6 +1,7 @@
 import type { InternalHelpers, LayoutData, RenderOptions, SVG } from 'mermaid';
 import { circularLayout } from './layout.js';
 import type { CircularLayoutOptions, Point } from './layout.js';
+import { circularLayoutOptions } from './options.js';
 
 /**
  * The mermaid seam. The pattern every layout engine follows:
@@ -67,6 +68,7 @@ export const render = async (
 
   const layoutOptions: CircularLayoutOptions = {
     spacing: data4Layout.config.flowchart?.nodeSpacing,
+    ...circularLayoutOptions(),
   };
   const result = circularLayout(measured, layoutEdges, layoutOptions);
 

@@ -64,6 +64,19 @@ update the README beside it.
   is breathing room (32px), not mere non-overlap — a label clearing
   a box by five pixels still reads as jammed; a tight-gap label
   slides radially outside the ring, where there is always room.
+- **2026-08-08 — The author's third review: the arrowhead's axis is
+  the trajectory.** Upheld, and the mechanism found in mermaid's
+  line-offset pass: any point within ~5px of a path end is displaced
+  along the whole path's global left/right direction, so with dense
+  samples the tail always kinks and `orient="auto"` rotates the
+  marker along the kink. Every path now ends (and begins) with an
+  explicit straight 10px tail laid exactly on the curve's terminal
+  tangent — outreaching the displacement window, making the marker's
+  line of symmetry the trajectory by construction — and interiors
+  sample sparsely (~13px segments; sub-pixel sagitta). Also upheld:
+  the two-node lens was lopsided because sibling spread applied to a
+  pair the diameter tie already mirrors; at n = 2 the sibling key is
+  the directed pair.
 - **2026-08-08 — The helpers seam is accepted risk.** mermaid marks
   `InternalHelpers` deprecated for external use. elk and tidy-tree
   ship on it anyway; so does this. The demo is the canary on

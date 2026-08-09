@@ -287,8 +287,40 @@ const rimCrossing = (radius: number, b: BoxAt, from: number, limit: number): num
   return hi;
 };
 
-/** A quadratic Bézier sampled evenly, endpoints included. */
-const quadratic = (p0: Point, c: Point, p3: Point, samples: number): Point[] => {
+const unit = (v: Point): Point => {
+  const len = Math.hypot(v.x, v.y) || 1;
+  return { x: v.x / len, y: v.y / len };
+};
+
+/**
+ * Straighten both ends of a sampled curve into explicit 10px tails
+ * laid along the given end tangents. The arrowhead's line of symmetry
+ * is the final path segment's direction, and mermaid displaces points
+ * within ~5px of an end — a straight tail longer than that window
+ * makes the marker's axis the curve's true trajectory by
+ * construction.
+ */
+const withTails = (points: Point[], d0: Point, d1: Point, tail: number): Point[] => {
+  const first = points[0]!;
+  const last = points[points.length - 1]!;
+  return [
+    first,
+    { x: first.x + d0.x * tail, y: first.y + d0.y * tail },
+    ...points.slice(1, -1),
+    { x: last.x - d1.x * tail, y: last.y - d1.y * tail },
+    last,
+  ];
+};
+
+/** Samples for a curve of the given approximate length: ~13px
+ *  segments, so no interior point falls in mermaid's end windows. */
+const densityOf = (length: number, cap: number) =>
+  Math.max(3, Math.min(cap, Math.round(length / 13)));
+
+/** A quadratic Bézier, sparsely sampled, with straight tangent tails. */
+const quadratic = (p0: Point, c: Point, p3: Point, cap: number): Point[] => {
+  const approxLength = Math.hypot(c.x - p0.x, c.y - p0.y) + Math.hypot(p3.x - c.x, p3.y - c.y);
+  const samples = densityOf(approxLength, cap);
   const points: Point[] = [];
   for (let i = 0; i <= samples; i++) {
     const t = i / samples;
@@ -298,11 +330,22 @@ const quadratic = (p0: Point, c: Point, p3: Point, samples: number): Point[] => 
       y: u * u * p0.y + 2 * u * t * c.y + t * t * p3.y,
     });
   }
-  return points;
+  const tail = Math.min(10, approxLength / 4);
+  return withTails(
+    points,
+    unit({ x: c.x - p0.x, y: c.y - p0.y }),
+    unit({ x: p3.x - c.x, y: p3.y - c.y }),
+    tail
+  );
 };
 
-/** A cubic Bézier sampled evenly, endpoints included. */
-const cubic = (p0: Point, c1: Point, c2: Point, p3: Point, samples: number): Point[] => {
+/** A cubic Bézier, sparsely sampled, with straight tangent tails. */
+const cubic = (p0: Point, c1: Point, c2: Point, p3: Point, cap: number): Point[] => {
+  const approxLength =
+    Math.hypot(c1.x - p0.x, c1.y - p0.y) +
+    Math.hypot(c2.x - c1.x, c2.y - c1.y) +
+    Math.hypot(p3.x - c2.x, p3.y - c2.y);
+  const samples = densityOf(approxLength, cap);
   const points: Point[] = [];
   for (let i = 0; i <= samples; i++) {
     const t = i / samples;
@@ -312,7 +355,13 @@ const cubic = (p0: Point, c1: Point, c2: Point, p3: Point, samples: number): Poi
       y: u * u * u * p0.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * p3.y,
     });
   }
-  return points;
+  const tail = Math.min(10, approxLength / 5);
+  return withTails(
+    points,
+    unit({ x: c1.x - p0.x, y: c1.y - p0.y }),
+    unit({ x: p3.x - c2.x, y: p3.y - c2.y }),
+    tail
+  );
 };
 
 export const circularLayout = (
@@ -397,8 +446,12 @@ export const circularLayout = (
       return { ...e, points: cubic(flank(-1), t1, t2, flank(1), samples), onRim: false };
     }
 
-    const key = pairKeyOf(e);
-    const siblings = pairCount.get(key)!;
+    // At two nodes the diameter tie already mirrors the two
+    // directions onto opposite sides — spreading them again would
+    // put the lens's halves on different circles. Sibling spread
+    // there applies only to same-direction duplicates.
+    const key = n === 2 ? `${e.start}>${e.end}` : pairKeyOf(e);
+    const siblings = pairCount.get(key) ?? 1;
     const index = pairIndex.get(key) ?? 0;
     pairIndex.set(key, index + 1);
     const spread = siblings === 1 ? 0 : index - (siblings - 1) / 2;
@@ -410,7 +463,6 @@ export const circularLayout = (
       // One circle, drawn honestly: the edge is a true arc of the
       // rim, from the exact angle where the circle leaves the source
       // box's border to the exact angle where it enters the target's.
-      // The arrowhead inherits the rim's tangent at the crossing.
       // A sibling pair (opposite or parallel arrows) rides concentric
       // arcs — the offset clamped so the offset circle still passes
       // through both boxes.
@@ -428,10 +480,43 @@ export const circularLayout = (
       const bUnwrapped = a + delta;
       const exit = rimCrossing(arcRadius, boxA, a, midAngle);
       const entry = rimCrossing(arcRadius, boxB, bUnwrapped, midAngle);
-      const points: Point[] = [];
-      for (let i = 0; i <= samples; i++) {
-        points.push(onCircle(arcRadius, exit + ((entry - exit) * i) / samples));
+
+      // The marker's line of symmetry is the direction of the path's
+      // final segment, and mermaid displaces any point within ~5px of
+      // an end. Both ends therefore get a straight 10px tail laid
+      // exactly along the rim's tangent at the crossing — the
+      // arrowhead's axis IS the trajectory, by construction — and the
+      // interior is sampled sparsely (~13px segments; the sagitta of
+      // a 13px chord on these radii is a fraction of a pixel).
+      const sweep = entry - exit;
+      const arcLength = Math.abs(sweep) * arcRadius;
+      const tail = Math.min(10, arcLength / 3);
+      const tangentAt = (angle: number, sign: number): Point => ({
+        x: -Math.sin(angle) * sign,
+        y: Math.cos(angle) * sign,
+      });
+      const sign = Math.sign(sweep) || 1;
+      const startPt = onCircle(arcRadius, exit);
+      const endPt = onCircle(arcRadius, entry);
+      const startTangent = tangentAt(exit, sign);
+      const endTangent = tangentAt(entry, sign);
+      const tailAngle = tail / arcRadius;
+      const innerFrom = exit + sign * tailAngle;
+      const innerTo = entry - sign * tailAngle;
+      const innerSamples = Math.max(2, Math.min(samples, Math.round(arcLength / 13)));
+      const points: Point[] = [
+        startPt,
+        { x: startPt.x + startTangent.x * tail, y: startPt.y + startTangent.y * tail },
+      ];
+      if ((innerTo - innerFrom) * sign > 0) {
+        for (let i = 0; i <= innerSamples; i++) {
+          points.push(onCircle(arcRadius, innerFrom + ((innerTo - innerFrom) * i) / innerSamples));
+        }
       }
+      points.push(
+        { x: endPt.x - endTangent.x * tail, y: endPt.y - endTangent.y * tail },
+        endPt
+      );
       return { ...e, points, onRim: true };
     }
 

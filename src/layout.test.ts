@@ -166,9 +166,10 @@ describe('edge routing', () => {
     for (const e of edges) {
       expect(e.onRim).toBe(true);
       // Every point of the path — endpoints included — lies on the
-      // rim: the eye must read one circle, not five curves.
+      // rim (the straight 10px marker tails may sit a sub-pixel
+      // sagitta inside it): the eye must read one circle.
       for (const p of e.points) {
-        expect(Math.hypot(p.x, p.y)).toBeCloseTo(radius, 4);
+        expect(Math.abs(Math.hypot(p.x, p.y) - radius)).toBeLessThan(0.5);
       }
     }
   });
@@ -308,7 +309,7 @@ describe('edge routing', () => {
     expect(dist(there, back)).toBeGreaterThan(8);
   });
 
-  it('mirrors the two-node pair into a lens, one arc each side', () => {
+  it('mirrors the two-node pair into a lens, one arc each side, same size', () => {
     const { edges } = circularLayout(
       [box('Ping'), box('Pong')],
       [edge('Ping', 'Pong'), edge('Pong', 'Ping')]
@@ -316,5 +317,46 @@ describe('edge routing', () => {
     const midOf = (e: (typeof edges)[number]) => e.points[Math.floor(e.points.length / 2)]!;
     const [a, b] = edges.map(midOf);
     expect(Math.sign(a!.x)).not.toBe(Math.sign(b!.x));
+    // The lens is symmetric: both arcs the same distance out.
+    expect(Math.hypot(a!.x, a!.y)).toBeCloseTo(Math.hypot(b!.x, b!.y), 4);
+  });
+
+  it('gives every path a straight terminal tail longer than mermaid marker meddling', () => {
+    const ids = ['A', 'B', 'C', 'D', 'E'];
+    const { edges } = circularLayout(
+      ids.map((id) => box(id)),
+      [...cycle(...ids), edge('A', 'C'), edge('A', 'A')]
+    );
+    for (const e of edges) {
+      const last = e.points[e.points.length - 1]!;
+      const prev = e.points[e.points.length - 2]!;
+      const first = e.points[0]!;
+      const second = e.points[1]!;
+      // mermaid displaces points within ~5px of the ends; the
+      // terminal segments must outreach that window or the marker
+      // orients along a kink.
+      expect(dist(last, prev), `${e.id} end tail`).toBeGreaterThan(6);
+      expect(dist(first, second), `${e.id} start tail`).toBeGreaterThan(6);
+    }
+  });
+
+  it("aligns the arrowhead's line of symmetry with the arc's true tangent", () => {
+    const { edges, radius } = circularLayout(
+      ['A', 'B', 'C', 'D', 'E'].map((id) => box(id)),
+      cycle('A', 'B', 'C', 'D', 'E')
+    );
+    for (const e of edges) {
+      const last = e.points[e.points.length - 1]!;
+      const prev = e.points[e.points.length - 2]!;
+      const segAngle = Math.atan2(last.y - prev.y, last.x - prev.x);
+      // Rim tangent at the endpoint, clockwise travel.
+      const tangent = Math.atan2(last.x, -last.y);
+      let diff = Math.abs(segAngle - tangent) % (2 * Math.PI);
+      diff = Math.min(diff, 2 * Math.PI - diff);
+      expect(diff, `${e.id} marker angle off tangent by ${(diff * 180) / Math.PI}°`).toBeLessThan(
+        (1.5 * Math.PI) / 180
+      );
+      expect(Math.hypot(last.x, last.y)).toBeCloseTo(radius, 4);
+    }
   });
 });

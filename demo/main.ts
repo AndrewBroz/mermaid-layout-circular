@@ -101,6 +101,37 @@ const cases: Case[] = [
 `,
   },
   {
+    title: 'spurs — the cycle keeps the ring, the rest hangs off it',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  Sun --> E[Evaporation]
+  E --> C[Condensation]
+  C --> P[Precipitation]
+  P --> R[Runoff]
+  R --> O[Collection]
+  O --> E
+  P --> F[Flooding]
+  F --> D[Damage]
+  O --> G[Groundwater]
+`,
+  },
+  {
+    title: 'a Krebs-style cycle with inputs and outputs',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  A[Citrate] --> B[Isocitrate] --> C[Ketoglutarate] --> D[Succinyl-CoA]
+  D --> E[Succinate] --> F[Fumarate] --> G[Malate] --> H[Oxaloacetate] --> A
+  AcCoA[Acetyl-CoA] --> A
+  C --> CO2a[CO2]
+  D --> CO2b[CO2 again]
+  G --> NADH
+`,
+  },
+  {
     title: 'ten nodes',
     wide: true,
     text:

@@ -16,8 +16,6 @@ const cycle = (...ids: string[]): LayoutEdgeInput[] =>
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
   Math.hypot(a.x - b.x, a.y - b.y);
 
-const TAU = 2 * Math.PI;
-
 describe('placement', () => {
   it('puts every node at the same distance from the origin', () => {
     const { nodes, radius } = circularLayout(
@@ -30,18 +28,28 @@ describe('placement', () => {
     }
   });
 
-  it('spaces nodes at equal angles — the regular polygon a designer would draw', () => {
-    const { nodes, order } = circularLayout(
-      [box('A', 200, 60), box('B', 40, 40), box('C', 120, 50), box('D', 40, 40), box('E', 90, 45)],
-      cycle('A', 'B', 'C', 'D', 'E')
-    );
-    const angleOf = new Map(nodes.map((n) => [n.id, n.angle]));
-    const step = TAU / order.length;
-    for (let i = 0; i < order.length; i++) {
-      const here = angleOf.get(order[i]!)!;
-      const next = angleOf.get(order[(i + 1) % order.length]!)!;
-      const gap = (((next - here) % TAU) + TAU) % TAU;
-      expect(gap).toBeCloseTo(step, 6);
+  it('never lets two boxes touch, whatever their sizes', () => {
+    const sized = [
+      box('A', 200, 60),
+      box('B', 40, 40),
+      box('C', 120, 50),
+      box('D', 40, 40),
+      box('E', 90, 45),
+    ];
+    const { nodes } = circularLayout(sized, cycle('A', 'B', 'C', 'D', 'E'));
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const sizeOf = new Map(sized.map((n) => [n.id, n]));
+    for (let i = 0; i < sized.length; i++) {
+      for (let j = i + 1; j < sized.length; j++) {
+        const p = byId.get(sized[i]!.id)!;
+        const q = byId.get(sized[j]!.id)!;
+        const overlapX =
+          Math.abs(p.x - q.x) < (sizeOf.get(sized[i]!.id)!.width + sizeOf.get(sized[j]!.id)!.width) / 2;
+        const overlapY =
+          Math.abs(p.y - q.y) <
+          (sizeOf.get(sized[i]!.id)!.height + sizeOf.get(sized[j]!.id)!.height) / 2;
+        expect(overlapX && overlapY, `${sized[i]!.id} overlaps ${sized[j]!.id}`).toBe(false);
+      }
     }
   });
 
@@ -61,19 +69,25 @@ describe('placement', () => {
     expect(byId.get(order[2]!)!.x).toBeCloseTo(-byId.get(order[3]!)!.x, 6);
   });
 
-  it('keeps adjacent nodes at least their footprint plus spacing apart', () => {
+  it('separates adjacent boxes along the line between them, plus real daylight on the rim', () => {
     const spacing = 30;
-    const nodes = [box('A', 200, 60), box('B', 40, 40), box('C', 120, 50), box('D', 40, 40)];
-    const { nodes: placed, order } = circularLayout(nodes, cycle('A', 'B', 'C', 'D'), {
+    const sized = [box('A', 200, 60), box('B', 40, 40), box('C', 120, 50), box('D', 40, 40)];
+    const { nodes: placed, order } = circularLayout(sized, cycle('A', 'B', 'C', 'D'), {
       spacing,
     });
     const byId = new Map(placed.map((n) => [n.id, n]));
-    const sizes = new Map(nodes.map((n) => [n.id, Math.hypot(n.width, n.height) / 2]));
+    const sizeOf = new Map(sized.map((n) => [n.id, n]));
     for (let i = 0; i < order.length; i++) {
-      const here = order[i]!;
-      const next = order[(i + 1) % order.length]!;
-      const need = sizes.get(here)! + sizes.get(next)! + spacing;
-      expect(dist(byId.get(here)!, byId.get(next)!)).toBeGreaterThanOrEqual(need - 1e-6);
+      const here = byId.get(order[i]!)!;
+      const next = byId.get(order[(i + 1) % order.length]!)!;
+      const a = sizeOf.get(order[i]!)!;
+      const b = sizeOf.get(order[(i + 1) % order.length]!)!;
+      const d = dist(here, next);
+      const dir = { x: (next.x - here.x) / d, y: (next.y - here.y) / d };
+      const support =
+        (Math.abs(dir.x) * a.width + Math.abs(dir.y) * a.height) / 2 +
+        (Math.abs(dir.x) * b.width + Math.abs(dir.y) * b.height) / 2;
+      expect(d, `${order[i]} to ${order[(i + 1) % order.length]}`).toBeGreaterThan(support);
     }
   });
 
@@ -94,6 +108,107 @@ describe('placement', () => {
       [edge('A', 'B')]
     );
     expect(new Set(nodes.map((n) => n.id))).toEqual(new Set(['A', 'B', 'C', 'lone']));
+  });
+});
+
+const tangentialExtent = (w: number, h: number, angle: number) =>
+  (Math.abs(Math.sin(angle)) * w) / 2 + (Math.abs(Math.cos(angle)) * h) / 2;
+
+describe('uniform gaps', () => {
+  it('equalizes the visible arrows: free arcs between wide boxes stay within a fifth of each other', () => {
+    // The water-cycle shape that showed a stubby bottom arrow: five
+    // wide boxes whose tangential claims differ by position.
+    const ids = ['A', 'B', 'C', 'D', 'E'];
+    const { nodes, order, radius } = circularLayout(
+      ids.map((id) => box(id, 150, 50)),
+      cycle(...ids)
+    );
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const gaps: number[] = [];
+    for (let i = 0; i < order.length; i++) {
+      const here = byId.get(order[i]!)!;
+      const next = byId.get(order[(i + 1) % order.length]!)!;
+      let delta = next.angle - here.angle;
+      while (delta <= 0) {
+        delta += 2 * Math.PI;
+      }
+      gaps.push(
+        radius * delta -
+          tangentialExtent(150, 50, here.angle) -
+          tangentialExtent(150, 50, next.angle)
+      );
+    }
+    const widest = Math.max(...gaps);
+    const slimmest = Math.min(...gaps);
+    expect(slimmest).toBeGreaterThan(0);
+    expect(widest / slimmest).toBeLessThan(1.2);
+  });
+
+  it('still mirrors side pairs after equalization', () => {
+    const { nodes, order } = circularLayout(
+      ['A', 'B', 'C', 'D', 'E'].map((id) => box(id, 150, 50)),
+      cycle('A', 'B', 'C', 'D', 'E')
+    );
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const top = byId.get(order[0]!)!;
+    expect(top.x).toBeCloseTo(0, 4);
+    expect(byId.get(order[1]!)!.y).toBeCloseTo(byId.get(order[4]!)!.y, 4);
+    expect(byId.get(order[1]!)!.x).toBeCloseTo(-byId.get(order[4]!)!.x, 4);
+    expect(byId.get(order[2]!)!.y).toBeCloseTo(byId.get(order[3]!)!.y, 4);
+    expect(byId.get(order[2]!)!.x).toBeCloseTo(-byId.get(order[3]!)!.x, 4);
+  });
+});
+
+describe('spurs', () => {
+  const ring = cycle('A', 'B', 'C', 'D');
+  const spurEdges = [
+    ...ring,
+    edge('Sun', 'A'), // an input spur
+    edge('C', 'Flood'), // an output spur
+    edge('Flood', 'Damage'), // depth two
+  ];
+  const spurNodes = ['A', 'B', 'C', 'D', 'Sun', 'Flood', 'Damage'].map((id) => box(id));
+
+  it('keeps only the cycle on the rim', () => {
+    const { order } = circularLayout(spurNodes, spurEdges);
+    expect(new Set(order)).toEqual(new Set(['A', 'B', 'C', 'D']));
+  });
+
+  it('hangs each spur outside the ring, near its attachment', () => {
+    const { nodes, radius } = circularLayout(spurNodes, spurEdges);
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const a = byId.get('A')!;
+    const sun = byId.get('Sun')!;
+    const flood = byId.get('Flood')!;
+    const damage = byId.get('Damage')!;
+    expect(Math.hypot(sun.x, sun.y)).toBeGreaterThan(radius);
+    expect(Math.hypot(flood.x, flood.y)).toBeGreaterThan(radius);
+    // Depth two reaches further out than depth one.
+    expect(Math.hypot(damage.x, damage.y)).toBeGreaterThan(Math.hypot(flood.x, flood.y));
+    // The spur stays in its parent's neighborhood.
+    const angleGap = Math.abs(Math.atan2(sun.y, sun.x) - Math.atan2(a.y, a.x));
+    expect(Math.min(angleGap, 2 * Math.PI - angleGap)).toBeLessThan(Math.PI / 3);
+  });
+
+  it('routes spur edges border to border with straight tangent tails', () => {
+    const { edges, nodes } = circularLayout(spurNodes, spurEdges);
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const spurEdge = edges.find((e) => e.id === 'Sun-A')!;
+    expect(spurEdge.points.length).toBeGreaterThanOrEqual(4);
+    const first = spurEdge.points[0]!;
+    const last = spurEdge.points[spurEdge.points.length - 1]!;
+    expect(dist(first, byId.get('Sun')!)).toBeLessThanOrEqual(Math.hypot(40, 20) + 1e-6);
+    expect(dist(last, byId.get('A')!)).toBeLessThanOrEqual(Math.hypot(40, 20) + 1e-6);
+    const tail = dist(last, spurEdge.points[spurEdge.points.length - 2]!);
+    expect(tail).toBeGreaterThan(6);
+  });
+
+  it('keeps everything on the ring when the graph has no cycle', () => {
+    const { order } = circularLayout(
+      ['A', 'B', 'C', 'D'].map((id) => box(id)),
+      [edge('A', 'B'), edge('B', 'C'), edge('C', 'D')]
+    );
+    expect(order).toHaveLength(4);
   });
 });
 
@@ -227,10 +342,11 @@ describe('edge routing', () => {
     for (const e of edges) {
       expect(e.onRim).toBe(true);
       // Every point of the path — endpoints included — lies on the
-      // rim (the straight 10px marker tails may sit a sub-pixel
-      // sagitta inside it): the eye must read one circle.
+      // rim (the straight 10px marker tails may sit tail²/2R off it,
+      // under a pixel at any plausible radius): the eye reads one
+      // circle.
       for (const p of e.points) {
-        expect(Math.abs(Math.hypot(p.x, p.y) - radius)).toBeLessThan(0.5);
+        expect(Math.abs(Math.hypot(p.x, p.y) - radius)).toBeLessThan(0.8);
       }
     }
   });

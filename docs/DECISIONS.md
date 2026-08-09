@@ -93,6 +93,26 @@ update the README beside it.
   their sampled neighbor so a deep bow cannot double back. Not
   fixed, documented: mermaid measures HTML labels in screen pixels,
   so a CSS-transformed container skews collision checks.
+- **2026-08-09 — The author's fourth review: the eye judges arrows,
+  not angles.** Equal center angles gave unequal visible arrows,
+  because a box's claim on the circle depends on its orientation (a
+  wide box eats much arc at twelve o'clock, little at three).
+  Superseded by gap equalization: each box claims its tangential
+  extent, free arcs are set equal, mirror pairs are averaged to keep
+  the bilateral symmetry, labeled gaps widen to hold their labels
+  (the renderer then prefers a snug inline label over an airy exiled
+  one, two-tier), and the radius rises when any pair of boxes would
+  come too close — with a 1.6-footprint floor, because the extent
+  linearization lies when the radius stops dwarfing the boxes (the
+  two-node lens collapsed to prove it).
+- **2026-08-09 — Spurs: the ring is the 2-core.** Peeling nodes with
+  a single neighbor, repeatedly, leaves exactly the cycle; the
+  peeled forest hangs radially off its attachment nodes, deeper
+  branches further out, each tree's angular wedge widening its rim
+  node's claim so neighbors make room. Cycle-free graphs and rims
+  thinner than three fall back to everything-on-the-ring. This is
+  the hand-drawn tradition (Krebs, water-with-side-effects): one
+  ring, spurs radiating.
 - **2026-08-08 — The helpers seam is accepted risk.** mermaid marks
   `InternalHelpers` deprecated for external use. elk and tidy-tree
   ship on it anyway; so does this. The demo is the canary on

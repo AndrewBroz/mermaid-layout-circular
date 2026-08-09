@@ -61,10 +61,21 @@ export const render = async (
     width: node.width ?? 100,
     height: node.height ?? 50,
   }));
+
+  // Labels are measured before layout so a labeled gap on the rim
+  // can widen to hold its label. insertEdgeLabel stamps the measured
+  // size onto the edge object itself.
+  for (const edge of data4Layout.edges) {
+    if (nodeDb.has(edge.start ?? '') && nodeDb.has(edge.end ?? '')) {
+      await insertEdgeLabel(edgeLabels, edge);
+    }
+  }
+
   const layoutEdges = data4Layout.edges.map((edge) => ({
     id: edge.id,
     start: edge.start ?? '',
     end: edge.end ?? '',
+    labelWidth: edge.label ? (edge as { width?: number }).width : undefined,
   }));
 
   const nodeSpacing = data4Layout.config.flowchart?.nodeSpacing;
@@ -93,12 +104,11 @@ export const render = async (
       const endNode = nodeDb.get(edge.end ?? '');
       const routed = routedById.get(edge.id);
       if (!startNode || !endNode) {
-        // Checked before inserting the label: a dropped edge's label
-        // would otherwise sit unpositioned at the origin.
+        // The label pass above skipped this edge too, so nothing
+        // sits unpositioned at the origin.
         log.warn(`circular layout: edge ${edge.id} dropped — an endpoint is missing`);
         continue;
       }
-      await insertEdgeLabel(edgeLabels, edge);
 
       const points: Point[] =
         routed && routed.points.length > 0
@@ -130,21 +140,24 @@ export const render = async (
         };
         const r = Math.hypot(mid.x, mid.y);
         if (labelW > 0 && r > 0) {
-          // The padding is breathing room, not mere non-overlap — a
-          // label that clears a box by five pixels still reads as
-          // jammed against it.
-          const breath = 32;
-          const collides = (at: Point): boolean =>
+          const collides = (at: Point, breath: number): boolean =>
             [...nodeDb.values()].some(
               (node) =>
                 Math.abs(at.x - (node.x ?? 0)) < (labelW + breath + (node.width ?? 0)) / 2 &&
                 Math.abs(at.y - (node.y ?? 0)) < (labelH + breath + (node.height ?? 0)) / 2
             );
-          // The cap scales with the label: a wide label needs a
-          // longer slide before it can possibly clear.
-          const maxPush = 64 + labelW + labelH;
-          for (let push = 8; collides(labelAt) && push <= maxPush; push += 8) {
-            labelAt = { x: (mid.x * (r + push)) / r, y: (mid.y * (r + push)) / r };
+          // Two tiers: a label that fits inline with modest breathing
+          // room stays inline — a home inside the gap beats an airier
+          // exile outside the ring. Only when even the modest fit
+          // fails does the label slide outward, and then it clears
+          // generously.
+          if (collides(labelAt, 14)) {
+            // The cap scales with the label: a wide label needs a
+            // longer slide before it can possibly clear.
+            const maxPush = 64 + labelW + labelH;
+            for (let push = 8; collides(labelAt, 32) && push <= maxPush; push += 8) {
+              labelAt = { x: (mid.x * (r + push)) / r, y: (mid.y * (r + push)) / r };
+            }
           }
         }
       }

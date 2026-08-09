@@ -27,6 +27,9 @@ export interface LayoutEdgeInput {
   id: string;
   start: string;
   end: string;
+  /** Measured width of the edge's label, when it has one. A labeled
+   *  gap on the rim widens so the label can live inside it. */
+  labelWidth?: number;
 }
 
 export interface Point {
@@ -372,6 +375,67 @@ const cubic = (p0: Point, c1: Point, c2: Point, p3: Point, cap: number): Point[]
   );
 };
 
+/** Half-extent of a box along the rim's tangent at the given angle:
+ *  what the box actually claims of the circle, which depends on its
+ *  orientation — a wide box claims much at 12 o'clock and little at
+ *  3 o'clock, because only the tangential dimension counts. */
+const tangentialExtent = (node: LayoutNodeInput, angle: number): number =>
+  (Math.abs(Math.sin(angle)) * node.width) / 2 + (Math.abs(Math.cos(angle)) * node.height) / 2;
+
+/** Half-extent of a box along the radial direction at the given angle. */
+const radialExtent = (node: LayoutNodeInput, angle: number): number =>
+  (Math.abs(Math.cos(angle)) * node.width) / 2 + (Math.abs(Math.sin(angle)) * node.height) / 2;
+
+/** Half-extent of a box along an arbitrary unit direction. */
+const supportExtent = (node: LayoutNodeInput, dir: Point): number =>
+  (Math.abs(dir.x) * node.width) / 2 + (Math.abs(dir.y) * node.height) / 2;
+
+/**
+ * Separate the ring from what hangs off it. Repeatedly removing
+ * nodes with a single live neighbor peels away every tree, and what
+ * remains is the 2-core: the cycle (with its chords). Each peeled
+ * node remembers the neighbor it hung from, which builds the spur
+ * forest bottom-up. Isolated nodes and the roots of cycle-free
+ * components survive peeling and stay on the ring.
+ */
+const peel = (
+  nodes: LayoutNodeInput[],
+  edges: LayoutEdgeInput[]
+): { rim: Set<string>; childrenOf: Map<string, string[]> } => {
+  const neighborsOf = new Map<string, Set<string>>();
+  for (const node of nodes) {
+    neighborsOf.set(node.id, new Set());
+  }
+  for (const e of edges) {
+    if (e.start !== e.end && neighborsOf.has(e.start) && neighborsOf.has(e.end)) {
+      neighborsOf.get(e.start)!.add(e.end);
+      neighborsOf.get(e.end)!.add(e.start);
+    }
+  }
+  const rim = new Set(nodes.map((n) => n.id));
+  const childrenOf = new Map<string, string[]>();
+  let peeled = true;
+  while (peeled) {
+    peeled = false;
+    for (const node of nodes) {
+      if (!rim.has(node.id)) {
+        continue;
+      }
+      const live = [...neighborsOf.get(node.id)!].filter((nb) => rim.has(nb));
+      if (live.length === 1) {
+        rim.delete(node.id);
+        const parent = live[0]!;
+        if (!childrenOf.has(parent)) {
+          childrenOf.set(parent, []);
+        }
+        childrenOf.get(parent)!.push(node.id);
+        peeled = true;
+      }
+    }
+  }
+  return { rim, childrenOf };
+};
+
 export const circularLayout = (
   nodes: LayoutNodeInput[],
   edges: LayoutEdgeInput[],
@@ -409,63 +473,210 @@ export const circularLayout = (
     };
   }
 
-  const order = ordering === 'input' ? nodes.map((n) => n.id) : followEdges(nodes, edges);
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  const n = order.length;
-  const step = TAU / n;
 
-  // Equal angles; the radius covers the worst pair at every gap:
-  // positions g steps apart span a chord of 2R·sin(gπ/n).
-  let radius = 0;
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      const gap = Math.min(j - i, n - (j - i));
-      const need = footprint(byId.get(order[i]!)!) + footprint(byId.get(order[j]!)!) + spacing;
-      radius = Math.max(radius, need / (2 * Math.sin((gap * Math.PI) / n)));
+  // The ring is the graph's 2-core; trees hang off it as spurs. A
+  // ring thinner than three nodes means the graph is mostly trees,
+  // and everything stays on the ring as before.
+  let { rim, childrenOf } = peel(nodes, edges);
+  if (rim.size < 3) {
+    rim = new Set(nodes.map((n) => n.id));
+    childrenOf = new Map();
+  }
+  const rimNodes = nodes.filter((n) => rim.has(n.id));
+  const rimEdges = edges.filter((e) => rim.has(e.start) && rim.has(e.end));
+
+  const order =
+    ordering === 'input' ? rimNodes.map((n) => n.id) : followEdges(rimNodes, rimEdges);
+  const nRim = order.length;
+
+  // What a rim node claims of the circle: its own tangential extent,
+  // or half the width of the spur forest hanging off it, whichever
+  // is wider. Tree widths stack children side by side.
+  const treeWidth = (id: string, angle: number): number => {
+    const kids = childrenOf.get(id) ?? [];
+    const own = tangentialExtent(byId.get(id)!, angle) * 2;
+    if (kids.length === 0) {
+      return own;
+    }
+    const kidsWidth =
+      kids.reduce((sum, kid) => sum + treeWidth(kid, angle), 0) + (kids.length - 1) * spacing;
+    return Math.max(own, kidsWidth);
+  };
+  const effectiveExtent = (id: string, angle: number): number => {
+    const kids = childrenOf.get(id) ?? [];
+    const own = tangentialExtent(byId.get(id)!, angle);
+    if (kids.length === 0) {
+      return own;
+    }
+    const kidsWidth =
+      kids.reduce((sum, kid) => sum + treeWidth(kid, angle), 0) + (kids.length - 1) * spacing;
+    return Math.max(own, kidsWidth / 2);
+  };
+
+  // A labeled edge between rim neighbors needs its gap to hold the
+  // label; the widest such label sets the uniform gap for the whole
+  // ring, so the arrows stay equal AND inhabited.
+  const rimIndex = new Map(order.map((id, i) => [id, i]));
+  let labeledGapNeed = 0;
+  for (const e of edges) {
+    const pi = rimIndex.get(e.start);
+    const pj = rimIndex.get(e.end);
+    if (pi === undefined || pj === undefined || !e.labelWidth) {
+      continue;
+    }
+    const stepGap = Math.abs(pi - pj);
+    if (Math.min(stepGap, nRim - stepGap) === 1 || nRim === 2) {
+      // The renderer demands 32px of breathing room around a label,
+      // and the gap is arc length while the collision check measures
+      // straight-line distance, so the widening carries extra slack
+      // for the curvature. Without it the label misses inline
+      // placement by a hair and slides outside anyway.
+      labeledGapNeed = Math.max(labeledGapNeed, e.labelWidth + 48);
+    }
+  }
+  const targetGap = Math.max(spacing, labeledGapNeed);
+
+  // Solve angles so the free arc between neighboring borders is the
+  // same everywhere — the eye judges the arrows, not the angles. The
+  // extents depend on the angles and the angles on the extents, so
+  // iterate; then mirror the side pairs so the ring stays symmetric,
+  // with the first node pinned to the top. The radius follows from
+  // the same equation (2πR = n·gap + 2Σextent) and rises if any two
+  // boxes anywhere on the ring would come too close. The extent
+  // linearization needs the radius to dwarf the boxes, so small
+  // rings keep a floor of 1.6 footprints.
+  let radius = 1.6 * Math.max(...rimNodes.map(footprint));
+  let angles: number[] = order.map((_, i) => startAngle + (i * TAU) / nRim);
+  for (let round = 0; round < 60; round++) {
+    const extents = order.map((id, i) => effectiveExtent(id, angles[i]!));
+    const extentSum = 2 * extents.reduce((a, b) => a + b, 0);
+    const nextRadius = Math.max((nRim * targetGap + extentSum) / TAU, radius);
+    const gap = (TAU * nextRadius - extentSum) / nRim;
+    // Lay the ring sequentially, then symmetrize mirror pairs
+    // (i and n−i reflect across the vertical axis: θ ↦ π − θ).
+    const next: number[] = [startAngle];
+    for (let i = 1; i < nRim; i++) {
+      next.push(next[i - 1]! + (extents[i - 1]! + extents[i]! + gap) / nextRadius);
+    }
+    for (let i = 1; i * 2 < nRim; i++) {
+      const mirrored = (next[i]! + (Math.PI - next[nRim - i]!)) / 2;
+      next[i] = mirrored;
+      next[nRim - i] = Math.PI - mirrored;
+    }
+    if (nRim % 2 === 0) {
+      next[nRim / 2] = Math.PI / 2;
+    }
+    angles = next;
+    radius = nextRadius;
+
+    // No two rim boxes may come closer than their supports allow —
+    // this is what the radius floor is for. Scale up and re-solve.
+    let scale = 1;
+    for (let i = 0; i < nRim; i++) {
+      for (let j = i + 1; j < nRim; j++) {
+        const pi = onCircle(radius, angles[i]!);
+        const pj = onCircle(radius, angles[j]!);
+        const between = Math.hypot(pj.x - pi.x, pj.y - pi.y);
+        const dir = unit({ x: pj.x - pi.x, y: pj.y - pi.y });
+        const stepGap = Math.min(j - i, nRim - (j - i));
+        const margin = stepGap === 1 ? 2 : spacing / 2;
+        const need =
+          supportExtent(byId.get(order[i]!)!, dir) +
+          supportExtent(byId.get(order[j]!)!, dir) +
+          margin;
+        if (between < need) {
+          scale = Math.max(scale, need / Math.max(between, 1));
+        }
+      }
+    }
+    if (scale > 1.001) {
+      radius *= scale;
+      continue;
+    }
+    if (round > 4 && scale <= 1.001) {
+      break;
     }
   }
 
-  const angleOf = new Map(order.map((id, i) => [id, startAngle + i * step]));
+  const angleOf = new Map(order.map((id, i) => [id, angles[i]!]));
+  const posOf = new Map<string, Point>();
+  for (const id of order) {
+    posOf.set(id, onCircle(radius, angleOf.get(id)!));
+  }
+
+  // Hang each spur tree radially outward from its attachment,
+  // children fanned side by side across the parent's angle.
+  const placeChildren = (parentId: string, parentAngle: number, parentOuterRadius: number) => {
+    const kids = childrenOf.get(parentId) ?? [];
+    if (kids.length === 0) {
+      return;
+    }
+    const widths = kids.map((kid) => treeWidth(kid, parentAngle));
+    const total = widths.reduce((a, b) => a + b, 0) + (kids.length - 1) * spacing;
+    let cursor = -total / 2;
+    for (const [i, kid] of kids.entries()) {
+      const node = byId.get(kid)!;
+      const centerOffset = cursor + widths[i]! / 2;
+      cursor += widths[i]! + spacing;
+      const kidRadius =
+        parentOuterRadius + spacing * 0.8 + radialExtent(node, parentAngle);
+      const kidAngle = parentAngle + centerOffset / kidRadius;
+      posOf.set(kid, onCircle(kidRadius, kidAngle));
+      placeChildren(kid, kidAngle, kidRadius + radialExtent(node, kidAngle));
+    }
+  };
+  for (const id of order) {
+    const angle = angleOf.get(id)!;
+    placeChildren(id, angle, radius + radialExtent(byId.get(id)!, angle));
+  }
+
   const placed: PlacedNode[] = nodes.map((node) => {
-    const a = angleOf.get(node.id)!;
-    return { id: node.id, ...onCircle(radius, a), angle: a };
+    const pos = posOf.get(node.id) ?? { x: 0, y: 0 };
+    return { id: node.id, ...pos, angle: Math.atan2(pos.y, pos.x) };
   });
 
-  const boxOf = (id: string): BoxAt => {
+  const boxAt = (id: string): BoxAt => {
     const node = byId.get(id)!;
-    return { ...onCircle(radius, angleOf.get(id)!), width: node.width, height: node.height };
+    const pos = posOf.get(id)!;
+    return { ...pos, width: node.width, height: node.height };
   };
 
   const position = new Map(order.map((id, i) => [id, i]));
 
   // Edges sharing a pair of ends must separate, or two arrows draw
   // as one line. Rim pairs split radially; chord pairs split by bow
-  // depth. At two nodes the key is the directed pair, because the
-  // diameter tie already mirrors opposite directions onto opposite
-  // sides and only same-direction duplicates still coincide.
+  // depth; spur pairs bow apart sideways. At two rim nodes the key is
+  // the directed pair, because the diameter tie already mirrors
+  // opposite directions onto opposite sides.
   const pairIndex = new Map<string, number>();
   const pairCount = new Map<string, number>();
   const pairKeyOf = (e: LayoutEdgeInput) =>
-    n === 2 ? `${e.start}>${e.end}` : [e.start, e.end].sort().join(' ');
+    nRim === 2 ? `${e.start}>${e.end}` : [e.start, e.end].sort().join(' ');
   for (const e of edges) {
     pairCount.set(pairKeyOf(e), (pairCount.get(pairKeyOf(e)) ?? 0) + 1);
   }
 
   const routed: RoutedEdge[] = edges.map((e) => {
-    const a = angleOf.get(e.start);
-    const b = angleOf.get(e.end);
-    if (a === undefined || b === undefined) {
+    const pStart = posOf.get(e.start);
+    const pEnd = posOf.get(e.end);
+    if (!pStart || !pEnd) {
       return { ...e, points: [], onRim: false };
     }
 
     if (e.start === e.end) {
-      // A petal reaching outward: it springs from the outward-facing
-      // side, from two points either side of that side's middle.
-      const home = boxOf(e.start);
+      // A petal reaching outward from wherever the node sits — its
+      // own radius and angle, whether on the rim or up a spur.
+      const home = boxAt(e.start);
+      const homeRadius = Math.hypot(pStart.x, pStart.y);
+      const homeAngle = Math.atan2(pStart.y, pStart.x);
       const reach = footprint(byId.get(e.start)!) + spacing;
-      const t1 = onCircle(radius + reach, a - 0.45);
-      const t2 = onCircle(radius + reach, a + 0.45);
-      const outwardSide = sideAnchor(home, onCircle(radius * 2, a));
+      const t1 = onCircle(homeRadius + reach, homeAngle - 0.45);
+      const t2 = onCircle(homeRadius + reach, homeAngle + 0.45);
+      const outwardSide = sideAnchor(home, {
+        x: pStart.x * 2 || Math.cos(homeAngle),
+        y: pStart.y * 2 || Math.sin(homeAngle),
+      });
       const alongX = outwardSide.y === home.y ? 0 : 1;
       const flank = (sign: number): Point =>
         alongX === 0
@@ -480,8 +691,23 @@ export const circularLayout = (
     pairIndex.set(key, index + 1);
     const spread = siblings === 1 ? 0 : index - (siblings - 1) / 2;
 
+    const bothOnRim = position.has(e.start) && position.has(e.end);
+
+    if (!bothOnRim) {
+      // A spur edge: essentially radial, drawn straight from border
+      // to border. Siblings bow apart sideways.
+      const from = rayAnchor(boxAt(e.start), pEnd);
+      const to = rayAnchor(boxAt(e.end), pStart);
+      const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+      const across = unit({ x: to.y - from.y, y: -(to.x - from.x) });
+      const control = { x: mid.x + across.x * spread * 18, y: mid.y + across.y * spread * 18 };
+      return { ...e, points: quadratic(from, control, to, samples), onRim: false };
+    }
+
+    const a = angleOf.get(e.start)!;
+    const b = angleOf.get(e.end)!;
     const gap = Math.abs(position.get(e.start)! - position.get(e.end)!);
-    const neighbors = Math.min(gap, n - gap) === 1 || n === 2;
+    const neighbors = Math.min(gap, nRim - gap) === 1 || nRim === 2;
 
     if (neighbors) {
       // One circle, drawn honestly: the edge is a true arc of the
@@ -490,8 +716,8 @@ export const circularLayout = (
       // A sibling pair (opposite or parallel arrows) rides concentric
       // arcs — the offset clamped so the offset circle still passes
       // through both boxes.
-      const boxA = boxOf(e.start);
-      const boxB = boxOf(e.end);
+      const boxA = boxAt(e.start);
+      const boxB = boxAt(e.end);
       const maxOffset =
         0.6 * Math.min(boxA.width / 2, boxA.height / 2, boxB.width / 2, boxB.height / 2);
       // Scale the whole fan uniformly rather than clamping each
@@ -565,8 +791,8 @@ export const circularLayout = (
       x: mid.x * (1 - (bow + spread * 0.15)) + left.x * slide,
       y: mid.y * (1 - (bow + spread * 0.15)) + left.y * slide,
     };
-    const from = rayAnchor(boxOf(e.start), control);
-    const to = rayAnchor(boxOf(e.end), control);
+    const from = rayAnchor(boxAt(e.start), control);
+    const to = rayAnchor(boxAt(e.end), control);
     return { ...e, points: quadratic(from, control, to, samples), onRim: false };
   });
 

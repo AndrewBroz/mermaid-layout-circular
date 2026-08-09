@@ -56,6 +56,10 @@ export interface CircularLayoutOptions {
   /** How far a non-neighbor chord bows toward the center, 0..1.
    *  0 is a straight line. */
   bow?: number;
+  /** Sideways slide (fraction of the radius) for chords passing near
+   *  the center, so diameters braid around the hub instead of
+   *  stabbing through one point. 0 disables. */
+  swerve?: number;
   /** Points sampled per edge path. */
   samples?: number;
 }
@@ -74,6 +78,7 @@ const defaults = {
   startAngle: -Math.PI / 2,
   ordering: 'follow-edges' as const,
   bow: 0.35,
+  swerve: 0.2,
   samples: 24,
 };
 
@@ -81,51 +86,102 @@ const defaults = {
 const footprint = (n: LayoutNodeInput) => Math.hypot(n.width, n.height) / 2;
 
 /**
- * Walk the graph greedily, out-edges first, so that a written cycle
- * comes out in cycle order no matter how the author interleaved the
- * statements. Unreachable nodes append in input order.
+ * Order the rim by walking the graph with declaration continuity:
+ * from each node, continue along the out-edge written soonest after
+ * the edge just walked — an author writes a cycle as a run of
+ * statements, and the run is the path. No single start is safe (a
+ * chord written first derails one, a busy hub another), so every
+ * start is tried and the walk that puts the most edges between rim
+ * neighbors wins. Diagram-sized graphs make the n·e price nothing.
  */
 const followEdges = (nodes: LayoutNodeInput[], edges: LayoutEdgeInput[]): string[] => {
-  const out = new Map<string, string[]>();
-  const undirected = new Map<string, string[]>();
+  interface Arc {
+    to: string;
+    index: number;
+  }
+  const out = new Map<string, Arc[]>();
+  const undirected = new Map<string, Arc[]>();
   for (const n of nodes) {
     out.set(n.id, []);
     undirected.set(n.id, []);
   }
-  for (const e of edges) {
+  let arcCount = 0;
+  for (const [index, e] of edges.entries()) {
     if (!out.has(e.start) || !out.has(e.end) || e.start === e.end) {
       continue;
     }
-    out.get(e.start)!.push(e.end);
-    undirected.get(e.start)!.push(e.end);
-    undirected.get(e.end)!.push(e.start);
+    out.get(e.start)!.push({ to: e.end, index });
+    undirected.get(e.start)!.push({ to: e.end, index });
+    undirected.get(e.end)!.push({ to: e.start, index });
+    arcCount = Math.max(arcCount, index + 1);
   }
 
-  const order: string[] = [];
-  const seen = new Set<string>();
-  const visit = (id: string) => {
-    order.push(id);
-    seen.add(id);
+  const walkFrom = (start: string): string[] => {
+    const order: string[] = [];
+    const seen = new Set<string>();
+    const visit = (id: string) => {
+      order.push(id);
+      seen.add(id);
+    };
+    // Roots rotate so `start` leads; later components keep input order.
+    const startAt = nodes.findIndex((n) => n.id === start);
+    const roots = [...nodes.slice(startAt), ...nodes.slice(0, startAt)];
+    for (const root of roots) {
+      if (seen.has(root.id)) {
+        continue;
+      }
+      let here = root.id;
+      let lastIndex = -1;
+      visit(here);
+      for (;;) {
+        const soonestAfter = (arcs: Arc[]): Arc | undefined =>
+          arcs
+            .filter((arc) => !seen.has(arc.to))
+            .sort(
+              (p, q) =>
+                ((p.index - lastIndex + arcCount) % (arcCount + 1)) -
+                ((q.index - lastIndex + arcCount) % (arcCount + 1))
+            )[0];
+        const next = soonestAfter(out.get(here)!) ?? soonestAfter(undirected.get(here)!);
+        if (next === undefined) {
+          break;
+        }
+        visit(next.to);
+        here = next.to;
+        lastIndex = next.index;
+      }
+    }
+    return order;
   };
 
-  for (const root of nodes) {
-    if (seen.has(root.id)) {
-      continue;
-    }
-    let here = root.id;
-    visit(here);
-    for (;;) {
-      const next =
-        out.get(here)!.find((id) => !seen.has(id)) ??
-        undirected.get(here)!.find((id) => !seen.has(id));
-      if (next === undefined) {
-        break;
+  const rimScore = (order: string[]): number => {
+    const pos = new Map(order.map((id, i) => [id, i]));
+    let score = 0;
+    for (const e of edges) {
+      const p = pos.get(e.start);
+      const q = pos.get(e.end);
+      if (p === undefined || q === undefined || e.start === e.end) {
+        continue;
       }
-      visit(next);
-      here = next;
+      const gap = Math.abs(p - q);
+      if (Math.min(gap, order.length - gap) === 1) {
+        score++;
+      }
+    }
+    return score;
+  };
+
+  let best: string[] = nodes.map((n) => n.id);
+  let bestScore = -1;
+  for (const n of nodes) {
+    const candidate = walkFrom(n.id);
+    const score = rimScore(candidate);
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
     }
   }
-  return order;
+  return best;
 };
 
 /**
@@ -215,9 +271,34 @@ const clipToBoxes = (points: Point[], start: BoxAt, end: BoxAt): Point[] => {
  * A chord bowed toward the center: a quadratic Bézier whose control
  * point is the chord midpoint pulled `bow` of the way to the origin.
  * At bow 0 the samples lie on the straight chord.
+ *
+ * Pulling toward the center cannot move a diameter — its midpoint is
+ * the center — so every diameter of a wheel stabs through one point.
+ * The swerve slides the control sideways (left of travel), scaled by
+ * how close the chord passes to the center: diameters braid around
+ * the hub, short chords stay put, and the two directions of an
+ * opposite pair swerve to opposite sides on their own.
  */
-const bowedChord = (a: Point, b: Point, bow: number, samples: number): Point[] => {
-  const control = { x: ((a.x + b.x) / 2) * (1 - bow), y: ((a.y + b.y) / 2) * (1 - bow) };
+const bowedChord = (
+  a: Point,
+  b: Point,
+  bow: number,
+  swerve: number,
+  radius: number,
+  samples: number
+): Point[] => {
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const chordLength = Math.hypot(b.x - a.x, b.y - a.y);
+  const centrality = radius === 0 ? 0 : 1 - Math.min(1, Math.hypot(mid.x, mid.y) / radius);
+  const left =
+    chordLength === 0
+      ? { x: 0, y: 0 }
+      : { x: (b.y - a.y) / chordLength, y: -(b.x - a.x) / chordLength };
+  const slide = swerve * radius * centrality;
+  const control = {
+    x: mid.x * (1 - bow) + left.x * slide,
+    y: mid.y * (1 - bow) + left.y * slide,
+  };
   const points: Point[] = [];
   for (let i = 0; i <= samples; i++) {
     const t = i / samples;
@@ -274,7 +355,7 @@ export const circularLayout = (
   edges: LayoutEdgeInput[],
   options: CircularLayoutOptions = {}
 ): CircularLayoutResult => {
-  const { spacing, startAngle, ordering, bow, samples } = { ...defaults, ...options };
+  const { spacing, startAngle, ordering, bow, swerve, samples } = { ...defaults, ...options };
 
   if (nodes.length === 0) {
     return { nodes: [], edges: [], order: [], radius: 0 };
@@ -349,18 +430,27 @@ export const circularLayout = (
     const siblings = pairCount.get(key)!;
     const index = pairIndex.get(key) ?? 0;
     pairIndex.set(key, index + 1);
-    const offset = siblings === 1 ? 0 : (index - (siblings - 1) / 2) * 24;
+    const spread = siblings === 1 ? 0 : index - (siblings - 1) / 2;
 
     const gap = Math.abs(position.get(e.start)! - position.get(e.end)!);
     const neighbors = Math.min(gap, order.length - gap) === 1 || order.length === 2;
-    const points = neighbors
-      ? rimArc(radius, a, b, samples)
-      : bowedChord(onCircle(radius, a), onCircle(radius, b), bow, samples);
-    return {
-      ...e,
-      points: clipToBoxes(fanOut(points, offset), boxOf(e.start), boxOf(e.end)),
-      onRim: neighbors,
-    };
+    if (neighbors) {
+      // Rim points all sit near radius R, where a radial nudge is
+      // stable; chord points can pass the origin, where it is not.
+      const points = fanOut(rimArc(radius, a, b, samples), spread * 24);
+      return { ...e, points: clipToBoxes(points, boxOf(e.start), boxOf(e.end)), onRim: true };
+    }
+    // Chord siblings separate by bow depth; opposite directions
+    // already separate by the swerve's left-of-travel.
+    const points = bowedChord(
+      onCircle(radius, a),
+      onCircle(radius, b),
+      bow + spread * 0.15,
+      swerve,
+      radius,
+      samples
+    );
+    return { ...e, points: clipToBoxes(points, boxOf(e.start), boxOf(e.end)), onRim: false };
   });
 
   return { nodes: placed, edges: routed, order, radius };

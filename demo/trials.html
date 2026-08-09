@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>mermaid-layout-circular — trials</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 1.5rem;
+        background: #fbfaf7;
+        color: #23272e;
+        font-family: Georgia, serif;
+      }
+      h1 {
+        font-size: 1.2rem;
+        font-weight: normal;
+        margin: 0 0 1rem;
+      }
+      .row {
+        margin-bottom: 2rem;
+      }
+      .row h2 {
+        font-size: 0.95rem;
+        font-weight: normal;
+        font-style: italic;
+        margin: 0 0 0.5rem;
+        opacity: 0.8;
+      }
+      .cells {
+        display: flex;
+        gap: 1rem;
+      }
+      .cell {
+        flex: 1;
+        border: 1px solid #d8d4cb;
+        background: white;
+        border-radius: 6px;
+        padding: 0.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 260px;
+      }
+      .cell svg {
+        max-width: 100%;
+        max-height: 420px;
+        height: auto;
+      }
+      .error {
+        color: #a33;
+        font-family: monospace;
+        font-size: 0.7rem;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1 id="heading">trials</h1>
+    <div id="rows"></div>
+    <script type="module" src="./trials.ts"></script>
+  </body>
+</html>

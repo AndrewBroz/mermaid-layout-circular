@@ -93,6 +93,21 @@ describe('ordering', () => {
     }
   });
 
+  it('saves a chord for last — the walk prefers the neighbor with fewer edges', () => {
+    // The chord A→C is written first. A greedy walk that takes it
+    // puts C beside A and turns two real cycle edges into chords.
+    const { order } = circularLayout(
+      ['A', 'C', 'B', 'D', 'E'].map((id) => box(id)),
+      [edge('A', 'C'), ...cycle('A', 'B', 'C', 'D', 'E')]
+    );
+    const pos = new Map(order.map((id, i) => [id, i]));
+    const n = order.length;
+    for (const e of cycle('A', 'B', 'C', 'D', 'E')) {
+      const gap = Math.abs(pos.get(e.start)! - pos.get(e.end)!);
+      expect(Math.min(gap, n - gap)).toBe(1);
+    }
+  });
+
   it('honors input order when asked', () => {
     const { order } = circularLayout(
       ['A', 'C', 'E', 'B', 'D'].map((id) => box(id)),
@@ -210,6 +225,28 @@ describe('edge routing', () => {
         expect(inside(p, e.end, 220, 60)).toBe(false);
       }
     }
+  });
+
+  it('swerves a diameter off the center, and mirrored directions swerve apart', () => {
+    const ids = ['A', 'B', 'C', 'D', 'E', 'F'];
+    const { edges, radius } = circularLayout(
+      ids.map((id) => box(id)),
+      [...cycle(...ids), edge('A', 'D'), { id: 'D-A', start: 'D', end: 'A' }],
+      { swerve: 0.25 }
+    );
+    const midOf = (e: (typeof edges)[number]) => {
+      const m = e.points[Math.floor(e.points.length / 2)]!;
+      return Math.hypot(m.x, m.y);
+    };
+    const there = edges.find((e) => e.id === 'A-D')!;
+    const back = edges.find((e) => e.id === 'D-A')!;
+    // Off the center: a straight diameter's midpoint would sit at 0.
+    expect(midOf(there)).toBeGreaterThan(radius * 0.05);
+    expect(midOf(back)).toBeGreaterThan(radius * 0.05);
+    // Left-of-travel is opposite sides for opposite directions.
+    const mThere = there.points[Math.floor(there.points.length / 2)]!;
+    const mBack = back.points[Math.floor(back.points.length / 2)]!;
+    expect(mThere.x * mBack.x + mThere.y * mBack.y).toBeLessThan(0);
   });
 
   it('mirrors the two-node pair into a lens, one arc each side', () => {

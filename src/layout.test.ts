@@ -111,37 +111,30 @@ describe('placement', () => {
   });
 });
 
-const tangentialExtent = (w: number, h: number, angle: number) =>
-  (Math.abs(Math.sin(angle)) * w) / 2 + (Math.abs(Math.cos(angle)) * h) / 2;
-
 describe('uniform gaps', () => {
-  it('equalizes the visible arrows: free arcs between wide boxes stay within a fifth of each other', () => {
+  it('equalizes the drawn arrows themselves: rim path lengths stay within a sixth of each other', () => {
     // The water-cycle shape that showed a stubby bottom arrow: five
-    // wide boxes whose tangential claims differ by position.
+    // wide boxes whose claims on the circle differ by position. The
+    // measurement is what the eye measures — the length of each
+    // routed rim path.
     const ids = ['A', 'B', 'C', 'D', 'E'];
-    const { nodes, order, radius } = circularLayout(
+    const { edges } = circularLayout(
       ids.map((id) => box(id, 150, 50)),
       cycle(...ids)
     );
-    const byId = new Map(nodes.map((n) => [n.id, n]));
-    const gaps: number[] = [];
-    for (let i = 0; i < order.length; i++) {
-      const here = byId.get(order[i]!)!;
-      const next = byId.get(order[(i + 1) % order.length]!)!;
-      let delta = next.angle - here.angle;
-      while (delta <= 0) {
-        delta += 2 * Math.PI;
+    const lengths = edges.map((e) => {
+      let length = 0;
+      for (let i = 1; i < e.points.length; i++) {
+        length += dist(e.points[i - 1]!, e.points[i]!);
       }
-      gaps.push(
-        radius * delta -
-          tangentialExtent(150, 50, here.angle) -
-          tangentialExtent(150, 50, next.angle)
-      );
-    }
-    const widest = Math.max(...gaps);
-    const slimmest = Math.min(...gaps);
-    expect(slimmest).toBeGreaterThan(0);
-    expect(widest / slimmest).toBeLessThan(1.2);
+      return length;
+    });
+    const longest = Math.max(...lengths);
+    const shortest = Math.min(...lengths);
+    expect(shortest).toBeGreaterThan(0);
+    expect(longest / shortest, `arrow lengths ${lengths.map((l) => l.toFixed(0)).join(', ')}`).toBeLessThan(
+      1.17
+    );
   });
 
   it('still mirrors side pairs after equalization', () => {

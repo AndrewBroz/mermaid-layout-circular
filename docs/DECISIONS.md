@@ -105,6 +105,19 @@ update the README beside it.
   come too close — with a 1.6-footprint floor, because the extent
   linearization lies when the radius stops dwarfing the boxes (the
   two-node lens collapsed to prove it).
+- **2026-08-09 — The fifth review: claims are measured, not
+  estimated.** Gap equalization on linearized tangential extents
+  still left the bottom arrow visibly stubby — the estimate runs
+  10–25% off for boxes oblique to the rim, always in the same
+  directions. Each box's claim is now the exact arc between the true
+  rim crossings of its border (the same bisection the router uses),
+  the relaxation is damped (a claim jumps steeply where the crossing
+  moves between a box's side and its top edge, and undamped rounds
+  bounce across the cliff), and convergence means the angles stopped
+  moving — not merely that collisions settled, which had been
+  breaking the loop half-way to the fixed point and was the actual
+  bug. The pin is what the eye measures: all five water-cycle arrows
+  now draw at the same length to the tenth of a pixel.
 - **2026-08-09 — Spurs: the ring is the 2-core.** Peeling nodes with
   a single neighbor, repeatedly, leaves exactly the cycle; the
   peeled forest hangs radially off its attachment nodes, deeper

@@ -503,17 +503,6 @@ export const circularLayout = (
       kids.reduce((sum, kid) => sum + treeWidth(kid, angle), 0) + (kids.length - 1) * spacing;
     return Math.max(own, kidsWidth);
   };
-  const effectiveExtent = (id: string, angle: number): number => {
-    const kids = childrenOf.get(id) ?? [];
-    const own = tangentialExtent(byId.get(id)!, angle);
-    if (kids.length === 0) {
-      return own;
-    }
-    const kidsWidth =
-      kids.reduce((sum, kid) => sum + treeWidth(kid, angle), 0) + (kids.length - 1) * spacing;
-    return Math.max(own, kidsWidth / 2);
-  };
-
   // A labeled edge between rim neighbors needs its gap to hold the
   // label; the widest such label sets the uniform gap for the whole
   // ring, so the arrows stay equal AND inhabited.
@@ -538,26 +527,42 @@ export const circularLayout = (
   const targetGap = Math.max(spacing, labeledGapNeed);
 
   // Solve angles so the free arc between neighboring borders is the
-  // same everywhere — the eye judges the arrows, not the angles. The
-  // extents depend on the angles and the angles on the extents, so
-  // iterate; then mirror the side pairs so the ring stays symmetric,
-  // with the first node pinned to the top. The radius follows from
-  // the same equation (2πR = n·gap + 2Σextent) and rises if any two
-  // boxes anywhere on the ring would come too close. The extent
-  // linearization needs the radius to dwarf the boxes, so small
-  // rings keep a floor of 1.6 footprints.
+  // same everywhere — the eye judges the arrows, not the angles.
+  // Each box's claim on the circle is measured exactly, as the arc
+  // between the true rim crossings of its border (an estimate from
+  // the tangent line ran 10–25% off for oblique boxes, and the
+  // errors showed as visibly unequal arrows). Claims depend on the
+  // angles and the angles on the claims, so iterate; then mirror the
+  // side pairs so the ring stays symmetric, with the first node
+  // pinned to the top. The radius follows from the same equation
+  // (2πR = n·gap + Σclaims) and rises if any two boxes anywhere on
+  // the ring would come too close. Small rings keep a floor of 1.6
+  // footprints so the crossings exist at all.
   let radius = 1.6 * Math.max(...rimNodes.map(footprint));
-  let angles: number[] = order.map((_, i) => startAngle + (i * TAU) / nRim);
-  for (let round = 0; round < 60; round++) {
-    const extents = order.map((id, i) => effectiveExtent(id, angles[i]!));
-    const extentSum = 2 * extents.reduce((a, b) => a + b, 0);
-    const nextRadius = Math.max((nRim * targetGap + extentSum) / TAU, radius);
-    const gap = (TAU * nextRadius - extentSum) / nRim;
+  const angles: number[] = order.map((_, i) => startAngle + (i * TAU) / nRim);
+  const claimOf = (id: string, angle: number, r: number): { back: number; fwd: number } => {
+    const node = byId.get(id)!;
+    const home: BoxAt = { ...onCircle(r, angle), width: node.width, height: node.height };
+    const fwd = (rimCrossing(r, home, angle, angle + Math.PI) - angle) * r;
+    const back = (angle - rimCrossing(r, home, angle, angle - Math.PI)) * r;
+    const kids = childrenOf.get(id) ?? [];
+    if (kids.length === 0) {
+      return { back, fwd };
+    }
+    const kidsWidth =
+      kids.reduce((sum, kid) => sum + treeWidth(kid, angle), 0) + (kids.length - 1) * spacing;
+    return { back: Math.max(back, kidsWidth / 2), fwd: Math.max(fwd, kidsWidth / 2) };
+  };
+  for (let round = 0; round < 300; round++) {
+    const claims = order.map((id, i) => claimOf(id, angles[i]!, radius));
+    const claimSum = claims.reduce((sum, c) => sum + c.back + c.fwd, 0);
+    const nextRadius = Math.max((nRim * targetGap + claimSum) / TAU, radius);
+    const gap = (TAU * nextRadius - claimSum) / nRim;
     // Lay the ring sequentially, then symmetrize mirror pairs
     // (i and n−i reflect across the vertical axis: θ ↦ π − θ).
     const next: number[] = [startAngle];
     for (let i = 1; i < nRim; i++) {
-      next.push(next[i - 1]! + (extents[i - 1]! + extents[i]! + gap) / nextRadius);
+      next.push(next[i - 1]! + (claims[i - 1]!.fwd + gap + claims[i]!.back) / nextRadius);
     }
     for (let i = 1; i * 2 < nRim; i++) {
       const mirrored = (next[i]! + (Math.PI - next[nRim - i]!)) / 2;
@@ -567,7 +572,16 @@ export const circularLayout = (
     if (nRim % 2 === 0) {
       next[nRim / 2] = Math.PI / 2;
     }
-    angles = next;
+    // Damped update: a claim jumps steeply where the rim crossing
+    // moves from a box's side to its top or bottom edge, and an
+    // undamped relaxation bounces across that cliff instead of
+    // settling.
+    let maxDelta = 0;
+    for (let i = 0; i < nRim; i++) {
+      const blended = (angles[i]! + next[i]!) / 2;
+      maxDelta = Math.max(maxDelta, Math.abs(blended - angles[i]!));
+      angles[i] = blended;
+    }
     radius = nextRadius;
 
     // No two rim boxes may come closer than their supports allow —
@@ -594,7 +608,10 @@ export const circularLayout = (
       radius *= scale;
       continue;
     }
-    if (round > 4 && scale <= 1.001) {
+    // Converged only when the angles have actually stopped moving —
+    // breaking as soon as collisions settle left the fixed point
+    // half-reached and the gaps visibly unequal.
+    if (round > 4 && maxDelta < 1e-4) {
       break;
     }
   }

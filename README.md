@@ -11,7 +11,7 @@ it breaks the loop, lays the nodes out in a line, and routes one long
 arrow back around the outside. The result never looks like a cycle. This
 package addresses the request in
 [mermaid-js/mermaid#3228](https://github.com/mermaid-js/mermaid/issues/3228),
-open since 2022: cycles should look like cycles.
+open since 2022, that cycles be represented more naturally.
 
 Here is the same five-node flowchart rendered both ways:
 
@@ -28,17 +28,9 @@ all keep working:
 
 A cycle with side branches keeps its ring: the cycle stays on the
 circle and everything else hangs off it radially, the way textbook
-figures draw the Krebs cycle or a water cycle with side effects:
+figures would draw the Krebs cycle, for example:
 
 ![An eight-node Krebs cycle ring with Acetyl-CoA feeding in from above and CO2 and NADH branching outward](docs/media/krebs-cycle.png)
-
-![The water cycle ring with the Sun feeding Evaporation from above, Groundwater branching off Collection, and a Flooding-to-Damage chain hanging off Precipitation](docs/media/water-cycle-spurs.png)
-
-![Ten months arranged in a circle, arrows riding the ring between them](docs/media/ten-nodes.png)
-
-`CLAUDE.md` is a symlink to this file, so human and model readers see the
-same document. Design decisions are logged in `docs/DECISIONS.md`, which
-is append-only and dated.
 
 ## Usage
 

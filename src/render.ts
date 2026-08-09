@@ -71,11 +71,15 @@ export const render = async (
     }
   }
 
+  const visibleMarker = (type: string | undefined): boolean =>
+    type !== undefined && type !== 'none' && type !== 'arrow_open';
   const layoutEdges = data4Layout.edges.map((edge) => ({
     id: edge.id,
     start: edge.start ?? '',
     end: edge.end ?? '',
     labelWidth: edge.label ? (edge as { width?: number }).width : undefined,
+    startMarker: visibleMarker((edge as { arrowTypeStart?: string }).arrowTypeStart),
+    endMarker: visibleMarker((edge as { arrowTypeEnd?: string }).arrowTypeEnd),
   }));
 
   const nodeSpacing = data4Layout.config.flowchart?.nodeSpacing;

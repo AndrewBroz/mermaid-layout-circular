@@ -30,6 +30,14 @@ export interface LayoutEdgeInput {
   /** Measured width of the edge's label, when it has one. A labeled
    *  gap on the rim widens so the label can live inside it. */
   labelWidth?: number;
+  /** True when the edge draws a visible marker at its start; the
+   *  path's start then curls clear of the box like the end does.
+   *  Default false — a plain arrow has no start marker to protect,
+   *  and curling for nothing would kink the exit. */
+  startMarker?: boolean;
+  /** True when the edge draws a visible marker at its end.
+   *  Default true. */
+  endMarker?: boolean;
 }
 
 export interface Point {
@@ -436,6 +444,74 @@ const peel = (
   return { rim, childrenOf };
 };
 
+const MARKER_LENGTH = 11;
+const MARKER_HALF = 5;
+
+/**
+ * The arrowhead is a triangle, not a point: ~11px long, ~5px to each
+ * side of the path, with only its tip on the border. A shallow entry
+ * near a box corner puts a flank inside the box. The repair is the
+ * gesture a hand makes: keep the tip where it is and curl the final
+ * approach toward the border's normal, just far enough that the
+ * whole triangle clears — a perpendicular entry has its flanks
+ * parallel to the edge and outside it by construction.
+ */
+const curlMarkerClear = (points: Point[], box: BoxAt): void => {
+  if (points.length < 2) {
+    return;
+  }
+  const tip = points[points.length - 1]!;
+  const prev = points[points.length - 2]!;
+  const incoming = unit({ x: tip.x - prev.x, y: tip.y - prev.y });
+  // Outward normal of the border edge the tip sits on.
+  const dx = (tip.x - box.x) / (box.width / 2 || 1);
+  const dy = (tip.y - box.y) / (box.height / 2 || 1);
+  const normalOut =
+    Math.abs(dx) >= Math.abs(dy)
+      ? { x: Math.sign(dx || 1), y: 0 }
+      : { x: 0, y: Math.sign(dy || 1) };
+  const clears = (d: Point): boolean => {
+    const perp = { x: -d.y, y: d.x };
+    return [-1, 1].every((sign) => {
+      const corner = {
+        x: tip.x - d.x * MARKER_LENGTH + perp.x * MARKER_HALF * sign,
+        y: tip.y - d.y * MARKER_LENGTH + perp.y * MARKER_HALF * sign,
+      };
+      return !insideBox(corner, box);
+    });
+  };
+  for (let t = 0; t <= 1.0001; t += 0.1) {
+    const d = unit({
+      x: (1 - t) * incoming.x - t * normalOut.x,
+      y: (1 - t) * incoming.y - t * normalOut.y,
+    });
+    if (clears(d)) {
+      if (t > 0) {
+        points[points.length - 2] = { x: tip.x - d.x * 10, y: tip.y - d.y * 10 };
+      }
+      return;
+    }
+  }
+};
+
+/** Curl a path's marker-bearing ends clear of the boxes they meet. */
+const curlEndsClear = (
+  points: Point[],
+  startBox: BoxAt,
+  endBox: BoxAt,
+  e: LayoutEdgeInput
+): Point[] => {
+  if (e.endMarker !== false) {
+    curlMarkerClear(points, endBox);
+  }
+  if (e.startMarker === true) {
+    points.reverse();
+    curlMarkerClear(points, startBox);
+    points.reverse();
+  }
+  return points;
+};
+
 export const circularLayout = (
   nodes: LayoutNodeInput[],
   edges: LayoutEdgeInput[],
@@ -466,7 +542,12 @@ export const circularLayout = (
         const t2 = { x: reach * Math.sin(0.45), y: -reach * Math.cos(0.45) };
         const p0 = { x: -only.width / 4, y: -only.height / 2 };
         const p3 = { x: only.width / 4, y: -only.height / 2 };
-        return { ...e, points: cubic(p0, t1, t2, p3, samples), onRim: false };
+        const homeBox: BoxAt = { x: 0, y: 0, width: only.width, height: only.height };
+        return {
+          ...e,
+          points: curlEndsClear(cubic(p0, t1, t2, p3, samples), homeBox, homeBox, e),
+          onRim: false,
+        };
       }),
       order: [only.id],
       radius: 0,
@@ -540,11 +621,31 @@ export const circularLayout = (
   // footprints so the crossings exist at all.
   let radius = 1.6 * Math.max(...rimNodes.map(footprint));
   const angles: number[] = order.map((_, i) => startAngle + (i * TAU) / nRim);
+  // A box's claim is its silhouette: the angular extent its corners
+  // subtend from the center of the ring. Rim crossings understate it
+  // — an arc can exit through a bottom edge and then travel hidden
+  // beneath the box on its way to the corner, and that hidden stretch
+  // is invisible to the eye. What the eye reads as "the arrow" is the
+  // open air between silhouettes, so that is what gets equalized.
   const claimOf = (id: string, angle: number, r: number): { back: number; fwd: number } => {
     const node = byId.get(id)!;
-    const home: BoxAt = { ...onCircle(r, angle), width: node.width, height: node.height };
-    const fwd = (rimCrossing(r, home, angle, angle + Math.PI) - angle) * r;
-    const back = (angle - rimCrossing(r, home, angle, angle - Math.PI)) * r;
+    const center = onCircle(r, angle);
+    let lo = 0;
+    let hi = 0;
+    for (const sx of [-1, 1]) {
+      for (const sy of [-1, 1]) {
+        const corner = {
+          x: center.x + (sx * node.width) / 2,
+          y: center.y + (sy * node.height) / 2,
+        };
+        let offset = Math.atan2(corner.y, corner.x) - angle;
+        offset = ((((offset + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
+        lo = Math.min(lo, offset);
+        hi = Math.max(hi, offset);
+      }
+    }
+    const fwd = hi * r;
+    const back = -lo * r;
     const kids = childrenOf.get(id) ?? [];
     if (kids.length === 0) {
       return { back, fwd };
@@ -699,7 +800,11 @@ export const circularLayout = (
         alongX === 0
           ? { x: outwardSide.x, y: home.y + (sign * home.height) / 4 }
           : { x: home.x + (sign * home.width) / 4, y: outwardSide.y };
-      return { ...e, points: cubic(flank(-1), t1, t2, flank(1), samples), onRim: false };
+      return {
+        ...e,
+        points: curlEndsClear(cubic(flank(-1), t1, t2, flank(1), samples), home, home, e),
+        onRim: false,
+      };
     }
 
     const key = pairKeyOf(e);
@@ -718,7 +823,11 @@ export const circularLayout = (
       const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
       const across = unit({ x: to.y - from.y, y: -(to.x - from.x) });
       const control = { x: mid.x + across.x * spread * 18, y: mid.y + across.y * spread * 18 };
-      return { ...e, points: quadratic(from, control, to, samples), onRim: false };
+      return {
+        ...e,
+        points: curlEndsClear(quadratic(from, control, to, samples), boxAt(e.start), boxAt(e.end), e),
+        onRim: false,
+      };
     }
 
     const a = angleOf.get(e.start)!;
@@ -788,7 +897,7 @@ export const circularLayout = (
         { x: endPt.x - endTangent.x * tail, y: endPt.y - endTangent.y * tail },
         endPt
       );
-      return { ...e, points, onRim: true };
+      return { ...e, points: curlEndsClear(points, boxA, boxB, e), onRim: true };
     }
 
     // A chord: bowed toward the center, swerved left of travel by how
@@ -810,7 +919,11 @@ export const circularLayout = (
     };
     const from = rayAnchor(boxAt(e.start), control);
     const to = rayAnchor(boxAt(e.end), control);
-    return { ...e, points: quadratic(from, control, to, samples), onRim: false };
+    return {
+      ...e,
+      points: curlEndsClear(quadratic(from, control, to, samples), boxAt(e.start), boxAt(e.end), e),
+      onRim: false,
+    };
   });
 
   return { nodes: placed, edges: routed, order, radius };

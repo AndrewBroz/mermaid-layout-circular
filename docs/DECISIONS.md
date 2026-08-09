@@ -118,6 +118,25 @@ update the README beside it.
   breaking the loop half-way to the fixed point and was the actual
   bug. The pin is what the eye measures: all five water-cycle arrows
   now draw at the same length to the tenth of a pixel.
+- **2026-08-09 — The sixth review, twice over: silhouettes and
+  flanks.** Two corrections from the author's eye against the
+  measured-claims version. First, arc length between border
+  crossings also lied: an arc can exit through a box's bottom edge
+  and travel hidden beneath the box past its corner, so equal arc
+  lengths still showed a short bottom arrow. The claim is now the
+  box's silhouette — the angular extent its corners subtend —
+  and what gets equalized is the open daylight between silhouettes,
+  which is the thing the eye actually reads. Second, the arrowhead
+  is a triangle, not a point: ~11px long, ~5px each side, and a
+  shallow entry near a corner put a flank inside the box while the
+  tip sat exactly on the border. Marker-bearing path ends now curl
+  toward the border's normal just far enough for the whole triangle
+  to clear — the tip stays put, and only ends that actually carry a
+  visible marker curl, because curling a bare exit kinked it.
+- **2026-08-09 — Process, of record: no push without the author's
+  visual pass.** Two pushes in a row satisfied the numbers and
+  failed his eye. Visual work now stops at a local commit and opened
+  renders; the push waits for him.
 - **2026-08-09 — Spurs: the ring is the 2-core.** Peeling nodes with
   a single neighbor, repeatedly, leaves exactly the cycle; the
   peeled forest hangs radially off its attachment nodes, deeper

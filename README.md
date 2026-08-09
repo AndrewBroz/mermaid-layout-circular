@@ -26,6 +26,12 @@ all keep working:
 | --- | --- |
 | ![A five-node daily cycle with labels in the gaps and a dotted chord across the middle](docs/media/labels-and-chord.png) | ![A four-node cycle drawn in mermaid's sketchy hand-drawn style](docs/media/hand-drawn.png) |
 
+A cycle with side branches keeps its ring: the cycle stays on the
+circle and everything else hangs off it radially, the way textbook
+figures draw the Krebs cycle or a water cycle with side effects:
+
+![An eight-node Krebs cycle ring with Acetyl-CoA feeding in from above and CO2 and NADH branching outward](docs/media/krebs-cycle.png)
+
 ![Ten months arranged in a circle, arrows riding the ring between them](docs/media/ten-nodes.png)
 
 `CLAUDE.md` is a symlink to this file, so human and model readers see the
@@ -87,12 +93,23 @@ from mermaid's own `flowchart.nodeSpacing`.
 
 The placement math is pure and lives in `src/layout.ts`.
 
-Nodes sit at equal angles on one circle, with the first node centered at
-the top. Equal angles give the ring mirror symmetry, so the boxes on the
-left sit at the same heights as their partners on the right. Node sizes
-never bend the angles. They grow the radius instead: for every pair of
-nodes the chord between their positions must cover both footprints plus
-spacing, and the radius is the smallest value that satisfies all pairs.
+The ring is the graph's 2-core: peel away nodes with a single neighbor,
+over and over, and what survives is the cycle. Everything peeled hangs
+off the ring as a spur, placed radially outward from its attachment
+node, with deeper branches reaching further out. A graph with no cycle
+at all keeps everything on the ring.
+
+Nodes sit on one circle with the first node centered at the top, but
+their angles are not equal, on purpose. The eye judges the arrows, and
+an arrow is the free arc left between two boxes. A wide box at twelve
+o'clock claims far more of the circle than the same box at three
+o'clock, so equal angles make some arrows stubby and others long. The
+solver instead equalizes the free arcs: each box's claim is its extent
+along the circle's tangent at its own position, the gaps between claims
+are set equal, and mirror pairs are then averaged so the ring keeps its
+left-right symmetry. A gap that must hold an edge label widens to fit
+it. The radius follows from the same equation and grows whenever any
+two boxes anywhere on the ring would otherwise come too close.
 
 The order of nodes around the circle comes from walking the graph. From
 each node the walk continues along the edge written soonest after the

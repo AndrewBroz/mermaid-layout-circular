@@ -1,0 +1,46 @@
+{
+  "name": "mermaid-layout-circular",
+  "version": "0.1.0",
+  "description": "Circular layout engine for mermaid flowcharts — nodes on a circle, edges as arcs",
+  "type": "module",
+  "module": "dist/mermaid-layout-circular.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/mermaid-layout-circular.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite demo",
+    "build": "vite build && tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "lint": "eslint ."
+  },
+  "keywords": [
+    "mermaid",
+    "layout",
+    "circular",
+    "cycle",
+    "diagram"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "mermaid": "^11.0.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.0",
+    "mermaid": "^11.12.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.46.0",
+    "vite": "^7.0.0",
+    "vitest": "^4.0.0"
+  }
+}

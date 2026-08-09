@@ -118,8 +118,18 @@ update the README beside it.
   breaking the loop half-way to the fixed point and was the actual
   bug. The pin is what the eye measures: all five water-cycle arrows
   now draw at the same length to the tenth of a pixel.
+- **2026-08-09 — Reverted: measured claims and the marker curl.**
+  The author judged both attempts against his eye and both failed —
+  the arrows still read unequal and the arrowhead overlap survived —
+  at a cost of two commits of added machinery. The source returns to
+  the linearized gap equalization exactly as it stood before the
+  measured-claims commit; the two superseded entries below stay, as
+  the record of what was tried and why it was not enough. The open
+  problems stand: the eye's metric for arrow equality is still not
+  captured, and arrowheads near corners still need an answer that
+  survives a human look.
 - **2026-08-09 — The sixth review, twice over: silhouettes and
-  flanks.** Two corrections from the author's eye against the
+  flanks.** (Superseded by the reversion above, same day.) Two corrections from the author's eye against the
   measured-claims version. First, arc length between border
   crossings also lied: an arc can exit through a box's bottom edge
   and travel hidden beneath the box past its corner, so equal arc

@@ -111,51 +111,37 @@ describe('placement', () => {
   });
 });
 
+const tangentialExtent = (w: number, h: number, angle: number) =>
+  (Math.abs(Math.sin(angle)) * w) / 2 + (Math.abs(Math.cos(angle)) * h) / 2;
+
 describe('uniform gaps', () => {
-  it('equalizes the open air between silhouettes — the daylight the eye reads as the arrow', () => {
-    // The water-cycle shape that showed a stubby bottom arrow. Arc
-    // length between border crossings lied: an arc can travel hidden
-    // beneath a box on its way past a corner. What must come out
-    // equal is the angular gap between the boxes' corner silhouettes.
-    for (const ids of [
-      ['A', 'B', 'C', 'D', 'E'],
-      ['A', 'B', 'C'],
-    ]) {
-      const { nodes, order, radius } = circularLayout(
-        ids.map((id) => box(id, 150, 50)),
-        cycle(...ids)
-      );
-      const byId = new Map(nodes.map((n) => [n.id, n]));
-      const extentOf = (id: string): { lo: number; hi: number } => {
-        const n = byId.get(id)!;
-        let lo = 0;
-        let hi = 0;
-        for (const sx of [-1, 1]) {
-          for (const sy of [-1, 1]) {
-            const corner = { x: n.x + (sx * 150) / 2, y: n.y + (sy * 50) / 2 };
-            let offset = Math.atan2(corner.y, corner.x) - n.angle;
-            offset = ((((offset + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI;
-            lo = Math.min(lo, offset);
-            hi = Math.max(hi, offset);
-          }
-        }
-        return { lo: n.angle + lo, hi: n.angle + hi };
-      };
-      const gaps: number[] = [];
-      for (let i = 0; i < order.length; i++) {
-        const here = extentOf(order[i]!);
-        const next = extentOf(order[(i + 1) % order.length]!);
-        let daylight = next.lo - here.hi;
-        while (daylight <= -Math.PI) {
-          daylight += 2 * Math.PI;
-        }
-        gaps.push(daylight * radius);
+  it('equalizes the visible arrows: free arcs between wide boxes stay within a fifth of each other', () => {
+    // The water-cycle shape that showed a stubby bottom arrow: five
+    // wide boxes whose tangential claims differ by position.
+    const ids = ['A', 'B', 'C', 'D', 'E'];
+    const { nodes, order, radius } = circularLayout(
+      ids.map((id) => box(id, 150, 50)),
+      cycle(...ids)
+    );
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const gaps: number[] = [];
+    for (let i = 0; i < order.length; i++) {
+      const here = byId.get(order[i]!)!;
+      const next = byId.get(order[(i + 1) % order.length]!)!;
+      let delta = next.angle - here.angle;
+      while (delta <= 0) {
+        delta += 2 * Math.PI;
       }
-      const widest = Math.max(...gaps);
-      const slimmest = Math.min(...gaps);
-      expect(slimmest, `gaps ${gaps.map((g) => g.toFixed(0)).join(', ')}`).toBeGreaterThan(0);
-      expect(widest / slimmest, `gaps ${gaps.map((g) => g.toFixed(0)).join(', ')}`).toBeLessThan(1.15);
+      gaps.push(
+        radius * delta -
+          tangentialExtent(150, 50, here.angle) -
+          tangentialExtent(150, 50, next.angle)
+      );
     }
+    const widest = Math.max(...gaps);
+    const slimmest = Math.min(...gaps);
+    expect(slimmest).toBeGreaterThan(0);
+    expect(widest / slimmest).toBeLessThan(1.2);
   });
 
   it('still mirrors side pairs after equalization', () => {
@@ -531,42 +517,7 @@ describe('edge routing', () => {
     }
   });
 
-  it('keeps the whole arrowhead triangle outside the target box, not just its tip', () => {
-    // The marker is ~11px long and ~5px to each side of the path;
-    // a shallow entry near a box corner can put a flank inside the
-    // box while the tip sits exactly on the border.
-    const cases = [
-      ['A', 'B', 'C', 'D', 'E'].map((id) => box(id, 150, 50)),
-      ['A', 'B', 'C', 'D', 'E', 'F'].map((id) => box(id, 120, 40)),
-    ];
-    for (const nodes of cases) {
-      const ids = nodes.map((n) => n.id);
-      const { edges, nodes: placed } = circularLayout(nodes, cycle(...ids));
-      const byId = new Map(placed.map((n) => [n.id, n]));
-      const sizeOf = new Map(nodes.map((n) => [n.id, n]));
-      for (const e of edges) {
-        const tip = e.points[e.points.length - 1]!;
-        const prev = e.points[e.points.length - 2]!;
-        const len = Math.hypot(tip.x - prev.x, tip.y - prev.y) || 1;
-        const dir = { x: (tip.x - prev.x) / len, y: (tip.y - prev.y) / len };
-        const perp = { x: -dir.y, y: dir.x };
-        const target = byId.get(e.end)!;
-        const size = sizeOf.get(e.end)!;
-        for (const sign of [-1, 1]) {
-          const corner = {
-            x: tip.x - dir.x * 11 + perp.x * 5 * sign,
-            y: tip.y - dir.y * 11 + perp.y * 5 * sign,
-          };
-          const inside =
-            Math.abs(corner.x - target.x) < size.width / 2 - 0.25 &&
-            Math.abs(corner.y - target.y) < size.height / 2 - 0.25;
-          expect(inside, `${e.id} marker flank inside ${e.end}`).toBe(false);
-        }
-      }
-    }
-  });
-
-  it("aligns the arrowhead's axis with the trajectory, curled no further than the border's normal", () => {
+  it("aligns the arrowhead's line of symmetry with the arc's true tangent", () => {
     const { edges, radius } = circularLayout(
       ['A', 'B', 'C', 'D', 'E'].map((id) => box(id)),
       cycle('A', 'B', 'C', 'D', 'E')
@@ -579,11 +530,8 @@ describe('edge routing', () => {
       const tangent = Math.atan2(last.x, -last.y);
       let diff = Math.abs(segAngle - tangent) % (2 * Math.PI);
       diff = Math.min(diff, 2 * Math.PI - diff);
-      // On the tangent when the marker clears; bent toward the
-      // border's normal (at most a quarter turn) when it must curl
-      // to keep its flanks out of the box.
       expect(diff, `${e.id} marker angle off tangent by ${(diff * 180) / Math.PI}°`).toBeLessThan(
-        Math.PI / 2 + 0.04
+        (1.5 * Math.PI) / 180
       );
       expect(Math.hypot(last.x, last.y)).toBeCloseTo(radius, 4);
     }

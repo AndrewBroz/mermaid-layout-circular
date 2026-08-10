@@ -227,6 +227,52 @@ describe('option hygiene', () => {
   });
 });
 
+describe('direction', () => {
+  const ids = ['A', 'B', 'C', 'D', 'E'];
+  const sized = [box('A', 200, 60), box('B', 40, 40), box('C', 120, 50), box('D', 40, 40), box('E', 90, 45)];
+
+  it('is the exact mirror of the clockwise layout across the vertical axis', () => {
+    const cw = circularLayout(sized, cycle(...ids));
+    const ccw = circularLayout(sized, cycle(...ids), { direction: 'counterclockwise' });
+    const cwById = new Map(cw.nodes.map((n) => [n.id, n]));
+    for (const n of ccw.nodes) {
+      const twin = cwById.get(n.id)!;
+      expect(n.x, `${n.id} x`).toBeCloseTo(-twin.x, 6);
+      expect(n.y, `${n.id} y`).toBeCloseTo(twin.y, 6);
+    }
+    const cwEdges = new Map(cw.edges.map((e) => [e.id, e]));
+    for (const e of ccw.edges) {
+      const twin = cwEdges.get(e.id)!;
+      expect(e.points.length).toBe(twin.points.length);
+      for (const [i, p] of e.points.entries()) {
+        expect(p.x, `${e.id} point ${i} x`).toBeCloseTo(-twin.points[i]!.x, 6);
+        expect(p.y, `${e.id} point ${i} y`).toBeCloseTo(twin.points[i]!.y, 6);
+      }
+    }
+  });
+
+  it('sends the walk leftward from the top: the successor sits on the left', () => {
+    const { nodes, order } = circularLayout(
+      ids.map((id) => box(id)),
+      cycle(...ids),
+      { direction: 'counterclockwise' }
+    );
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const top = byId.get(order[0]!)!;
+    expect(top.x).toBeCloseTo(0, 6);
+    expect(top.y).toBeLessThan(0);
+    expect(byId.get(order[1]!)!.x).toBeLessThan(0);
+    expect(byId.get(order[order.length - 1]!)!.x).toBeGreaterThan(0);
+  });
+
+  it('keeps a lone node centered, its angle untouched by the mirror', () => {
+    const { nodes } = circularLayout([box('A')], [], { direction: 'counterclockwise' });
+    expect(nodes[0]!.x).toBeCloseTo(0, 6);
+    expect(nodes[0]!.y).toBeCloseTo(0, 6);
+    expect(nodes[0]!.angle).toBeCloseTo(0, 6);
+  });
+});
+
 describe('degenerate graphs', () => {
   it('draws a self-loop on a lone node as a petal, not a point', () => {
     const { edges } = circularLayout([box('A')], [edge('A', 'A')]);

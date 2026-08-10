@@ -23,7 +23,7 @@ export const render = async (
   data4Layout: LayoutData,
   svg: SVG,
   { insertEdge, insertEdgeLabel, insertMarkers, insertNode, log, positionEdgeLabel }: InternalHelpers,
-  _options?: RenderOptions
+  options?: RenderOptions
 ) => {
   const element = svg.select('g');
   insertMarkers(element, data4Layout.markers, data4Layout.type, data4Layout.diagramId);
@@ -82,6 +82,9 @@ export const render = async (
   const layoutOptions: CircularLayoutOptions = {
     ...(nodeSpacing !== undefined && { spacing: nodeSpacing }),
     ...circularLayoutOptions(),
+    // The diagram picked circular-ccw by name in its own frontmatter —
+    // the most local signal there is, so it outranks options set in code.
+    ...(options?.algorithm === 'circular-ccw' && { direction: 'counterclockwise' as const }),
   };
   const result = circularLayout(measured, layoutEdges, layoutOptions);
 

@@ -55,6 +55,11 @@ import circularLayouts from 'mermaid-layout-circular';
 mermaid.registerLayoutLoaders(circularLayouts);
 ```
 
+Registration adds two layout names. `layout: circular` walks the ring
+clockwise from the top; `layout: circular-ccw` walks it
+counter-clockwise — the same layout seen in a mirror, so every
+guarantee about spacing, symmetry and arrows carries over unchanged.
+
 Subgraphs are not supported yet. A diagram containing one still renders,
 but the subgraph box is skipped and a warning is logged. Diagram types
 other than flowcharts are out of scope, since each one owns its layout.

@@ -41,6 +41,10 @@ const cases: Case[] = [
     text: frontmatter('dagre') + waterCycle,
   },
   {
+    title: 'the same cycle counter-clockwise — layout: circular-ccw',
+    text: frontmatter('circular-ccw') + waterCycle,
+  },
+  {
     title: 'hand-drawn look — the dress andrewbroz.net will wear',
     text:
       frontmatter('circular', '  look: handDrawn\n  theme: neutral\n') +

@@ -32,6 +32,21 @@ figures would draw the Krebs cycle, for example:
 
 ![An eight-node Krebs cycle ring with Acetyl-CoA feeding in from above and CO2 and NADH branching outward](docs/media/krebs-cycle.png)
 
+A hub earns the center. When one node is unmistakably the middle of
+the diagram — the center of a star, or the axle of a wheel whose ring
+survives without it — it moves to the origin and everything else
+rings around it, with the spokes drawn straight from border to
+border. Anything hanging off a spoke keeps hanging outward:
+
+| Hub and spoke | A wheel keeps its ring |
+| --- | --- |
+| ![A registry hub centered among five ringed spokes, with a log node hanging outward off one spoke](docs/media/hub-and-spoke.png) | ![A six-node plan-build-test ring with a vision node at the axle, fed by six straight spokes](docs/media/wheel.png) |
+
+The detection is deliberately conservative — a path, a balanced tree,
+a plain ring, or a ring with chords never elects a hub. The `hub`
+option overrides it either way: `'none'` keeps every node on the
+ring, a node id names the hub explicitly.
+
 ## Usage
 
 Select the layout per diagram in frontmatter, the same way

@@ -376,6 +376,51 @@ describe('hub and spoke', () => {
       }
     });
 
+    const gearAndLava = [
+      edge('Water', 'Vapor'),
+      edge('Vapor', 'Ice'),
+      edge('Ice', 'Water'),
+      edge('Earth', 'Lava'),
+    ];
+    const fullNodes = [...planetNodes, box('Vapor'), box('Ice'), box('Lava')];
+
+    it('hangs a leaf off a rim member while the axle holds and the gear meshes', () => {
+      const { hub, satellites, nodes, order, radius } = circularLayout(fullNodes, [
+        ...planetSpokes,
+        ...planetRing,
+        ...gearAndLava,
+      ]);
+      expect(hub).toBe('P');
+      expect(new Set(order)).toEqual(new Set(elements));
+      expect(satellites![0]!.anchor).toBe('Water');
+      const lava = nodes.find((n) => n.id === 'Lava')!;
+      expect(Math.hypot(lava.x, lava.y)).toBeGreaterThan(radius);
+    });
+
+    it("seats a spoke with no rim arcs on the ring anyway — it is the hub's, not the origin's", () => {
+      // Earth keeps only its spoke and its leaf: the peel hangs it
+      // off the hub, but a spoke belongs on the ring.
+      const { hub, satellites, nodes, order, radius } = circularLayout(fullNodes, [
+        ...planetSpokes,
+        edge('Water', 'Heart'),
+        edge('Fire', 'Wind'),
+        edge('Wind', 'Water'),
+        ...gearAndLava,
+      ]);
+      expect(hub).toBe('P');
+      expect(satellites![0]!.anchor).toBe('Water');
+      expect(new Set(order)).toEqual(new Set(elements));
+      const byId = new Map(nodes.map((n) => [n.id, n]));
+      expect(Math.hypot(byId.get('Earth')!.x, byId.get('Earth')!.y)).toBeCloseTo(radius, 6);
+      expect(Math.hypot(byId.get('Lava')!.x, byId.get('Lava')!.y)).toBeGreaterThan(radius);
+      // Nothing but the hub may sit at the center.
+      for (const n of nodes) {
+        if (n.id !== 'P') {
+          expect(Math.hypot(n.x, n.y), `${n.id} escaped the origin`).toBeGreaterThan(1);
+        }
+      }
+    });
+
     it('declines the truly ambiguous case: a spoke and a rim arc both gone', () => {
       const { hub } = circularLayout(planetNodes, [
         ...planetSpokes.slice(0, 4),

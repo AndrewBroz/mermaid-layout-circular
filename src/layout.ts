@@ -1027,6 +1027,14 @@ const layoutRing = (
     if (axle !== undefined && !satellitePlans.some((plan) => plan.anchor === axle)) {
       hubId = axle;
       rim.delete(axle);
+      // A spoke with no rim arcs peels onto the hub as if it were a
+      // tree limb — but a spoke belongs on the ring. The axle's
+      // direct children take rim seats; their own subtrees keep
+      // hanging off them, outward.
+      for (const kid of childrenOf.get(axle) ?? []) {
+        rim.add(kid);
+      }
+      childrenOf.delete(axle);
     }
   } else {
     // The center is earned, never assumed. An unmistakable star or

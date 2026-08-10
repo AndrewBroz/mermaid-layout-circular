@@ -227,6 +227,131 @@ describe('option hygiene', () => {
   });
 });
 
+describe('hub and spoke', () => {
+  const spokes = ['A', 'B', 'C', 'D', 'E', 'F'];
+  const starEdges = spokes.map((id) => edge('Hub', id));
+  const wheelEdges = [...cycle(...spokes), ...spokes.map((id) => edge(id, 'Hub'))];
+  const starNodes = ['Hub', ...spokes].map((id) => box(id));
+
+  it('pulls the center of a star into the middle and rings the spokes', () => {
+    const { nodes, radius, hub, order } = circularLayout(starNodes, starEdges);
+    expect(hub).toBe('Hub');
+    expect(order).not.toContain('Hub');
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    expect(byId.get('Hub')!.x).toBeCloseTo(0, 6);
+    expect(byId.get('Hub')!.y).toBeCloseTo(0, 6);
+    for (const id of spokes) {
+      expect(Math.hypot(byId.get(id)!.x, byId.get(id)!.y), id).toBeCloseTo(radius, 6);
+    }
+  });
+
+  it('centers the axle of a wheel and keeps the ring a ring', () => {
+    const { nodes, radius, hub, order } = circularLayout(
+      ['Hub', ...spokes].map((id) => box(id)),
+      wheelEdges
+    );
+    expect(hub).toBe('Hub');
+    expect(new Set(order)).toEqual(new Set(spokes));
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    expect(Math.hypot(byId.get('Hub')!.x, byId.get('Hub')!.y)).toBeCloseTo(0, 6);
+    for (const id of spokes) {
+      expect(Math.hypot(byId.get(id)!.x, byId.get(id)!.y), id).toBeCloseTo(radius, 6);
+    }
+  });
+
+  it('routes every spoke straight, border to border, well clear of both boxes', () => {
+    const { edges: routed, radius } = circularLayout(starNodes, starEdges);
+    for (const e of routed) {
+      expect(e.points.length).toBeGreaterThanOrEqual(2);
+      const first = e.points[0]!;
+      const last = e.points[e.points.length - 1]!;
+      // Leaves the hub's border, not its center; arrives at the ring, not beyond.
+      expect(Math.hypot(first.x, first.y)).toBeGreaterThan(10);
+      expect(Math.hypot(last.x, last.y)).toBeLessThan(radius);
+      // Straight: every point sits on the segment from first to last.
+      const len = Math.hypot(last.x - first.x, last.y - first.y);
+      for (const p of e.points) {
+        const cross =
+          ((last.x - first.x) * (p.y - first.y) - (last.y - first.y) * (p.x - first.x)) / len;
+        expect(Math.abs(cross)).toBeLessThan(0.5);
+      }
+    }
+  });
+
+  it('grows the radius until the spokes have daylight past a huge hub', () => {
+    const bigHub = [box('Hub', 400, 120), ...spokes.map((id) => box(id))];
+    const { nodes, radius } = circularLayout(bigHub, starEdges, { spacing: 30 });
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    for (const id of spokes) {
+      const p = byId.get(id)!;
+      const dir = { x: p.x / radius, y: p.y / radius };
+      const need =
+        (Math.abs(dir.x) * (400 + 80)) / 2 + (Math.abs(dir.y) * (120 + 40)) / 2 + 30;
+      expect(Math.hypot(p.x, p.y), id).toBeGreaterThanOrEqual(need - 1e-6);
+    }
+  });
+
+  it('never mistakes a path, a plain ring, or a ring with chords for a hub', () => {
+    const path = circularLayout(
+      ['A', 'B', 'C'].map((id) => box(id)),
+      [edge('A', 'B'), edge('B', 'C')]
+    );
+    expect(path.hub).toBeUndefined();
+
+    const ring = circularLayout(spokes.map((id) => box(id)), cycle(...spokes));
+    expect(ring.hub).toBeUndefined();
+
+    const chorded = circularLayout(
+      spokes.map((id) => box(id)),
+      [...cycle(...spokes), edge('A', 'C'), edge('A', 'D'), edge('A', 'E')]
+    );
+    expect(chorded.hub).toBeUndefined();
+  });
+
+  it('leaves the Krebs shape alone: ring plus spurs is not a wheel', () => {
+    const { hub, order } = circularLayout(
+      [...spokes, 'In', 'Out'].map((id) => box(id)),
+      [...cycle(...spokes), edge('In', 'A'), edge('C', 'Out')]
+    );
+    expect(hub).toBeUndefined();
+    expect(new Set(order)).toEqual(new Set(spokes));
+  });
+
+  it("honors hub: 'none' and an explicit hub id", () => {
+    const off = circularLayout(starNodes, starEdges, { hub: 'none' });
+    expect(off.hub).toBeUndefined();
+
+    const forced = circularLayout(
+      ['A', 'B', 'C'].map((id) => box(id)),
+      [edge('A', 'B'), edge('B', 'C')],
+      { hub: 'B' }
+    );
+    expect(forced.hub).toBe('B');
+    const b = forced.nodes.find((n) => n.id === 'B')!;
+    expect(Math.hypot(b.x, b.y)).toBeCloseTo(0, 6);
+  });
+
+  it('hangs deeper branches of a star outward, beyond the ring', () => {
+    const { nodes, radius, hub } = circularLayout(
+      ['Hub', ...spokes, 'Leaf'].map((id) => box(id)),
+      [...starEdges, edge('B', 'Leaf')]
+    );
+    expect(hub).toBe('Hub');
+    const leaf = nodes.find((n) => n.id === 'Leaf')!;
+    expect(Math.hypot(leaf.x, leaf.y)).toBeGreaterThan(radius);
+  });
+
+  it('keeps the hub pinned at the origin through the ccw mirror', () => {
+    const { nodes, hub } = circularLayout(starNodes, starEdges, {
+      direction: 'counterclockwise',
+    });
+    expect(hub).toBe('Hub');
+    const center = nodes.find((n) => n.id === 'Hub')!;
+    expect(center.x).toBeCloseTo(0, 6);
+    expect(center.y).toBeCloseTo(0, 6);
+  });
+});
+
 describe('direction', () => {
   const ids = ['A', 'B', 'C', 'D', 'E'];
   const sized = [box('A', 200, 60), box('B', 40, 40), box('C', 120, 50), box('D', 40, 40), box('E', 90, 45)];

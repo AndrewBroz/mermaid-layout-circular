@@ -38,9 +38,40 @@ survives without it — it moves to the origin and everything else
 rings around it, with the spokes drawn straight from border to
 border. Anything hanging off a spoke keeps hanging outward:
 
-| Hub and spoke | A wheel keeps its ring |
-| --- | --- |
-| ![A registry hub centered among five ringed spokes, with a log node hanging outward off one spoke](docs/media/hub-and-spoke.png) | ![A six-node plan-build-test ring with a vision node at the axle, fed by six straight spokes](docs/media/wheel.png) |
+```
+---
+config:
+  layout: circular
+---
+flowchart LR
+  Hub[Registry] --> A[Alpha]
+  Hub --> B[Bravo]
+  Hub --> C[Charlie]
+  Hub --> D[Delta]
+  Hub --> E[Echo]
+  B --> L[Bravo's log]
+```
+
+![A registry hub centered among five ringed spokes, with a log node hanging outward off one spoke](docs/media/hub-and-spoke.png)
+
+A wheel keeps its ring:
+
+```
+---
+config:
+  layout: circular
+---
+flowchart LR
+  A[Plan] --> B[Build] --> C[Test] --> D[Ship] --> E[Watch] --> F[Learn] --> A
+  A --> Hub[Vision]
+  B --> Hub
+  C --> Hub
+  D --> Hub
+  E --> Hub
+  F --> Hub
+```
+
+![A six-node plan-build-test ring with a vision node at the axle, fed by six straight spokes](docs/media/wheel.png)
 
 The detection is deliberately conservative — a path, a balanced tree,
 a plain ring, or a ring with chords never elects a hub. The `hub`

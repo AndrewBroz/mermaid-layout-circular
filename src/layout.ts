@@ -21,6 +21,9 @@ export interface LayoutNodeInput {
   id: string;
   width: number;
   height: number;
+  /** Subgraph membership. Members of one group are seated side by
+   *  side on their ring, so a box drawn around them wraps one arc. */
+  group?: string;
 }
 
 export interface LayoutEdgeInput {
@@ -141,6 +144,85 @@ const mirrored = (result: CircularLayoutResult): CircularLayoutResult => {
 
 /** Half the diagonal: the safe radius of a box whatever its rotation. */
 const footprint = (n: LayoutNodeInput) => Math.hypot(n.width, n.height) / 2;
+
+/** Room a subgraph box's wall claims beyond its member's border. */
+const GROUP_PAD = 16;
+
+/**
+ * Ring order with subgraphs seated together. Each group collapses to
+ * one super-node, the walk runs on that quotient — authors write
+ * groups as blocks the way they write cycles as runs — and each
+ * group then expands in place, ordered by its own internal walk. The
+ * expansion enters through the member that touches what came before,
+ * reversing the internal run when that member sits at its far end,
+ * so the written path keeps reading forward across the boundary.
+ */
+const orderRim = (rimNodes: LayoutNodeInput[], rimEdges: LayoutEdgeInput[]): string[] => {
+  const groupOf = new Map(
+    rimNodes.filter((n) => n.group !== undefined).map((n) => [n.id, n.group!])
+  );
+  if (groupOf.size === 0) {
+    return followEdges(rimNodes, rimEdges);
+  }
+  const superOf = (id: string) => groupOf.get(id) ?? id;
+  const superIds = [...new Set(rimNodes.map((n) => superOf(n.id)))];
+  const superNodes = superIds.map((id) => ({ id, width: 0, height: 0 }));
+  const superEdges: LayoutEdgeInput[] = [];
+  for (const e of rimEdges) {
+    if (superOf(e.start) !== superOf(e.end)) {
+      superEdges.push({ id: e.id, start: superOf(e.start), end: superOf(e.end) });
+    }
+  }
+  const coarse = followEdges(superNodes, superEdges);
+
+  const membersOf = new Map<string, string[]>();
+  for (const n of rimNodes) {
+    const key = superOf(n.id);
+    if (!membersOf.has(key)) {
+      membersOf.set(key, []);
+    }
+    membersOf.get(key)!.push(n.id);
+  }
+
+  const out: string[] = [];
+  for (const superId of coarse) {
+    const members = membersOf.get(superId)!;
+    if (members.length === 1) {
+      out.push(members[0]!);
+      continue;
+    }
+    const memberSet = new Set(members);
+    const inner = followEdges(
+      rimNodes.filter((n) => memberSet.has(n.id)),
+      rimEdges.filter((e) => memberSet.has(e.start) && memberSet.has(e.end))
+    );
+    const prev = out[out.length - 1];
+    let run = inner;
+    if (prev !== undefined) {
+      const touchesPrev = new Set<string>();
+      for (const e of rimEdges) {
+        if (e.start === prev) {
+          touchesPrev.add(e.end);
+        }
+        if (e.end === prev) {
+          touchesPrev.add(e.start);
+        }
+      }
+      const forward = inner.findIndex((id) => touchesPrev.has(id));
+      const reversed = [...inner].reverse();
+      const backward = reversed.findIndex((id) => touchesPrev.has(id));
+      if (forward !== 0 && backward === 0) {
+        run = reversed;
+      } else if (forward > 0 && (backward < 0 || forward <= backward)) {
+        run = [...inner.slice(forward), ...inner.slice(0, forward)];
+      } else if (backward > 0 && backward < forward) {
+        run = [...reversed.slice(backward), ...reversed.slice(0, backward)];
+      }
+    }
+    out.push(...run);
+  }
+  return out;
+};
 
 /**
  * Order the rim by walking the graph with declaration continuity:
@@ -902,7 +984,7 @@ const layoutRing = (
   const rimEdges = edges.filter((e) => rim.has(e.start) && rim.has(e.end));
 
   let order =
-    ordering === 'input' ? rimNodes.map((n) => n.id) : followEdges(rimNodes, rimEdges);
+    ordering === 'input' ? rimNodes.map((n) => n.id) : orderRim(rimNodes, rimEdges);
   // A satellite is solved facing home: its anchor (or, when the
   // anchor hangs off the ring, the ring node it hangs from) becomes
   // the first seat, which startAngle then pins. Rotating a cyclic
@@ -943,7 +1025,10 @@ const layoutRing = (
   };
   const effectiveExtent = (id: string, angle: number): number => {
     const kids = childrenOf.get(id) ?? [];
-    const own = tangentialExtent(byId.get(id)!, angle);
+    // A grouped node's box wall stands one pad beyond its border, and
+    // the neighbors must clear the wall, not just the node.
+    const self = byId.get(id)!;
+    const own = tangentialExtent(self, angle) + (self.group !== undefined ? GROUP_PAD : 0);
     const carried = [
       ...kids.map((kid) => treeWidth(kid, angle)),
       ...(satWidthsOf.get(id) ?? []),

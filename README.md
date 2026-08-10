@@ -154,7 +154,8 @@ flowchart LR
 ![A four-node product loop with a debug triangle drawn as its own smaller circle beyond Build](docs/media/satellite-ring.png)
 
 Two cycles sharing a node draw as a figure-eight, the circles
-genuinely tangent at the shared node:
+genuinely tangent at the shared node — and the smaller circle flows
+against the main ring, the way meshing gears turn:
 
 ```
 ---
@@ -170,7 +171,23 @@ flowchart LR
 
 The largest cycle keeps the middle, and the nesting recurses — a
 circle hanging off a circle hanging off a circle walks outward, each
-ring a true circle of its own.
+ring a true circle of its own, chains of meshed loops alternating
+direction like a gear train:
+
+```
+---
+config:
+  layout: circular
+---
+flowchart LR
+  A[Mine] --> B[Smelt] --> C[Cast] --> D[Sell] --> E[Invest] --> A
+  B --> F[Scrap]
+  F --> G[Sort] --> B
+  F --> H[Shred]
+  H --> I[Melt] --> F
+```
+
+![A five-node ring meshed with a second loop, which is meshed with a third, each spinning against the last](docs/media/three-gears.png)
 
 ## Usage
 

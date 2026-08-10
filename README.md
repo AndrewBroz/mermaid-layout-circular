@@ -13,22 +13,80 @@ package addresses the request in
 [mermaid-js/mermaid#3228](https://github.com/mermaid-js/mermaid/issues/3228),
 open since 2022, that cycles be represented more naturally.
 
-Here is the same five-node flowchart rendered both ways:
+Here is the same five-node flowchart rendered both ways — the two
+columns differ only in the `layout:` line:
+
+```
+---
+config:
+  layout: circular
+---
+flowchart LR
+  E[Evaporation] --> C[Condensation]
+  C --> P[Precipitation]
+  P --> R[Runoff]
+  R --> O[Collection]
+  O --> E
+```
 
 | `layout: circular` | `layout: dagre` (mermaid default) |
 | --- | --- |
 | ![The water cycle as a ring of five boxes connected by arcs of one circle](docs/media/water-cycle-circular.png) | ![The same five nodes flattened into a horizontal ladder with a long return arrow](docs/media/water-cycle-dagre.png) |
 
-Edge labels, chords between non-neighbors, and mermaid's hand-drawn look
-all keep working:
+Edge labels live in the gaps between boxes, and a chord between
+non-neighbors bows through the middle:
 
-| Labels and a chord | `look: handDrawn` |
-| --- | --- |
-| ![A five-node daily cycle with labels in the gaps and a dotted chord across the middle](docs/media/labels-and-chord.png) | ![A four-node cycle drawn in mermaid's sketchy hand-drawn style](docs/media/hand-drawn.png) |
+```
+---
+config:
+  layout: circular
+---
+flowchart LR
+  W[Wake] -->|coffee| Wk[Work]
+  Wk -->|lunch| M[Meetings]
+  M -->|escape| F[Focus]
+  F -->|dusk| Hm[Home]
+  Hm -->|sleep| W
+  Wk -.->|skip the day| Hm
+```
+
+![A five-node daily cycle with labels in the gaps and a dotted chord across the middle](docs/media/labels-and-chord.png)
+
+Mermaid's hand-drawn look keeps working too:
+
+```
+---
+config:
+  layout: circular
+  look: handDrawn
+  theme: neutral
+---
+flowchart LR
+  L[Listen] --> T[Think]
+  T --> S[Speak]
+  S --> H[Be heard]
+  H --> L
+```
+
+![A four-node cycle drawn in mermaid's sketchy hand-drawn style](docs/media/hand-drawn.png)
 
 A cycle with side branches keeps its ring: the cycle stays on the
 circle and everything else hangs off it radially, the way textbook
 figures would draw the Krebs cycle, for example:
+
+```
+---
+config:
+  layout: circular
+---
+flowchart LR
+  A[Citrate] --> B[Isocitrate] --> C[Ketoglutarate] --> D[Succinyl-CoA]
+  D --> E[Succinate] --> F[Fumarate] --> G[Malate] --> H[Oxaloacetate] --> A
+  AcCoA[Acetyl-CoA] --> A
+  C --> CO2a[CO2]
+  D --> CO2b[CO2 again]
+  G --> NADH
+```
 
 ![An eight-node Krebs cycle ring with Acetyl-CoA feeding in from above and CO2 and NADH branching outward](docs/media/krebs-cycle.png)
 

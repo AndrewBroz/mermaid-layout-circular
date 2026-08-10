@@ -291,7 +291,7 @@ describe('hub and spoke', () => {
     }
   });
 
-  it('never mistakes a path, a plain ring, or a ring with chords for a hub', () => {
+  it('never mistakes a path, a plain ring, or a ring with a few chords for a hub', () => {
     const path = circularLayout(
       ['A', 'B', 'C'].map((id) => box(id)),
       [edge('A', 'B'), edge('B', 'C')]
@@ -301,11 +301,88 @@ describe('hub and spoke', () => {
     const ring = circularLayout(spokes.map((id) => box(id)), cycle(...spokes));
     expect(ring.hub).toBeUndefined();
 
+    // A busy ring member with two shortcuts is still a ring member —
+    // it does not reach everyone.
     const chorded = circularLayout(
       spokes.map((id) => box(id)),
-      [...cycle(...spokes), edge('A', 'C'), edge('A', 'D'), edge('A', 'E')]
+      [...cycle(...spokes), edge('A', 'C'), edge('A', 'E')]
     );
     expect(chorded.hub).toBeUndefined();
+  });
+
+  describe('the dominant fan — spokes have special status', () => {
+    const elements = ['Earth', 'Fire', 'Wind', 'Water', 'Heart'];
+    const planetNodes = ['P', ...elements].map((id) => box(id));
+    const planetSpokes = elements.map((id) => edge(id, 'P'));
+    const planetRing = [
+      edge('Heart', 'Wind'),
+      edge('Heart', 'Earth'),
+      edge('Earth', 'Fire'),
+      edge('Fire', 'Water'),
+      edge('Water', 'Wind'),
+    ];
+
+    it('centers the full wheel', () => {
+      const { hub } = circularLayout(planetNodes, [...planetSpokes, ...planetRing]);
+      expect(hub).toBe('P');
+    });
+
+    it('keeps the axle when a rim arc goes missing', () => {
+      const { hub, nodes, order } = circularLayout(planetNodes, [
+        ...planetSpokes,
+        ...planetRing.slice(0, 4),
+      ]);
+      expect(hub).toBe('P');
+      expect(new Set(order)).toEqual(new Set(elements));
+      const p = nodes.find((n) => n.id === 'P')!;
+      expect(Math.hypot(p.x, p.y)).toBeCloseTo(0, 6);
+    });
+
+    it('keeps the axle when two rim arcs go missing', () => {
+      const { hub } = circularLayout(planetNodes, [
+        ...planetSpokes,
+        ...planetRing.slice(0, 3),
+      ]);
+      expect(hub).toBe('P');
+    });
+
+    it('keeps the axle when one spoke goes missing but the rim is whole', () => {
+      const { hub } = circularLayout(planetNodes, [
+        ...planetSpokes.slice(0, 4),
+        ...planetRing,
+      ]);
+      expect(hub).toBe('P');
+    });
+
+    it('keeps the axle when a gear meshes off a rim member', () => {
+      const { hub, satellites, nodes, order, radius } = circularLayout(
+        [...planetNodes, box('Vapor'), box('Ice')],
+        [
+          ...planetSpokes,
+          ...planetRing,
+          edge('Water', 'Vapor'),
+          edge('Vapor', 'Ice'),
+          edge('Ice', 'Water'),
+        ]
+      );
+      expect(hub).toBe('P');
+      expect(new Set(order)).toEqual(new Set(elements));
+      expect(satellites).toHaveLength(1);
+      expect(satellites![0]!.anchor).toBe('Water');
+      const byId = new Map(nodes.map((n) => [n.id, n]));
+      expect(Math.hypot(byId.get('P')!.x, byId.get('P')!.y)).toBeCloseTo(0, 6);
+      for (const id of ['Vapor', 'Ice']) {
+        expect(Math.hypot(byId.get(id)!.x, byId.get(id)!.y), id).toBeGreaterThan(radius);
+      }
+    });
+
+    it('declines the truly ambiguous case: a spoke and a rim arc both gone', () => {
+      const { hub } = circularLayout(planetNodes, [
+        ...planetSpokes.slice(0, 4),
+        ...planetRing.slice(0, 4),
+      ]);
+      expect(hub).toBeUndefined();
+    });
   });
 
   it('leaves the Krebs shape alone: ring plus spurs is not a wheel', () => {

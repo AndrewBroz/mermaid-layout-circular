@@ -162,10 +162,10 @@ const cases: Case[] = [
   Wind <--> P
   Water <--> P
   Heart <--> P
-  Heart <--> Wind
+  Heart <--> Water
   Heart <--> Earth
   Earth <--> Fire
-  Fire <--> Water
+  Fire <--> Wind
   Water <--> Vapor
   Vapor <--> Ice
   Ice <--> Water

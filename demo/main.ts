@@ -136,6 +136,35 @@ const cases: Case[] = [
 `,
   },
   {
+    title: 'hub and spoke — the center is earned, not assumed',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  Hub[Registry] --> A[Alpha]
+  Hub --> B[Bravo]
+  Hub --> C[Charlie]
+  Hub --> D[Delta]
+  Hub --> E[Echo]
+  B --> L[Bravo's log]
+`,
+  },
+  {
+    title: 'a wheel — the ring keeps its shape, the axle takes the middle',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  A[Plan] --> B[Build] --> C[Test] --> D[Ship] --> E[Watch] --> F[Learn] --> A
+  A --> Hub[Vision]
+  B --> Hub
+  C --> Hub
+  D --> Hub
+  E --> Hub
+  F --> Hub
+`,
+  },
+  {
     title: 'ten nodes',
     wide: true,
     text:

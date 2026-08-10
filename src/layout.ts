@@ -73,6 +73,11 @@ export interface CircularLayoutOptions {
    *  'clockwise'; 'counterclockwise' mirrors the whole layout across
    *  the vertical axis, so every guarantee carries over unchanged. */
   direction?: 'clockwise' | 'counterclockwise';
+  /** Hub-and-spoke. 'auto' (the default) pulls a node into the center
+   *  only when the shape is unmistakable — a star's center or a
+   *  wheel's axle — and rings everything else around it. 'none' keeps
+   *  every node on the ring; a node id names the hub explicitly. */
+  hub?: 'auto' | 'none' | (string & {});
 }
 
 export interface CircularLayoutResult {
@@ -80,6 +85,8 @@ export interface CircularLayoutResult {
   edges: RoutedEdge[];
   order: string[];
   radius: number;
+  /** The node placed at the center, when the layout found one. */
+  hub?: string;
 }
 
 const TAU = 2 * Math.PI;
@@ -92,6 +99,7 @@ const defaults = {
   swerve: 0.2,
   samples: 24,
   direction: 'clockwise' as const,
+  hub: 'auto' as const,
 };
 
 /**
@@ -463,6 +471,141 @@ const peel = (
   return { rim, childrenOf };
 };
 
+/** Undirected adjacency, self-loops and dangling endpoints ignored. */
+const neighborsOf = (
+  nodes: LayoutNodeInput[],
+  edges: LayoutEdgeInput[]
+): Map<string, Set<string>> => {
+  const nbrs = new Map<string, Set<string>>(nodes.map((n) => [n.id, new Set<string>()]));
+  for (const e of edges) {
+    if (e.start !== e.end && nbrs.has(e.start) && nbrs.has(e.end)) {
+      nbrs.get(e.start)!.add(e.end);
+      nbrs.get(e.end)!.add(e.start);
+    }
+  }
+  return nbrs;
+};
+
+/**
+ * Find the hub, if the shape is unmistakable. Two shapes qualify.
+ *
+ * A wheel: the ring has an axle. The candidate is the rim node with
+ * strictly the most rim neighbors — strictly, because in a wheel
+ * removing even an ordinary ring member leaves a cycle (the ring
+ * reroutes through the axle), so the removal test alone cannot tell
+ * the axle from a busy ring member; uniqueness can. The candidate is
+ * confirmed only if the ring survives whole without it.
+ *
+ * A star: no cycle anywhere (a cycle-free peel leaves a rim smaller
+ * than three), and one node is strictly the busiest, with at least
+ * three neighbors. Strictly, so a path (everyone ties at two) and a
+ * balanced tree (internal nodes tie) stay on the ring; but a star
+ * whose spokes grow branches keeps its center — the branches hang
+ * outward as spurs, and demanding that every edge touch the hub
+ * would let one annotation leaf collapse the whole shape.
+ */
+const findHub = (nodes: LayoutNodeInput[], edges: LayoutEdgeInput[]): string | undefined => {
+  const nbrs = neighborsOf(nodes, edges);
+  const { rim } = peel(nodes, edges);
+
+  if (rim.size >= 3) {
+    let best: string | undefined;
+    let bestCount = 0;
+    let tied = false;
+    for (const id of rim) {
+      const count = [...nbrs.get(id)!].filter((nb) => rim.has(nb)).length;
+      if (count > bestCount) {
+        best = id;
+        bestCount = count;
+        tied = false;
+      } else if (count === bestCount) {
+        tied = true;
+      }
+    }
+    if (!best || tied || bestCount < 3) {
+      return undefined;
+    }
+    const { rim: rest } = peel(
+      nodes.filter((n) => n.id !== best),
+      edges.filter((e) => e.start !== best && e.end !== best)
+    );
+    const wholeWithoutIt = [...rim].every((id) => id === best || rest.has(id));
+    return wholeWithoutIt && rest.size >= 3 ? best : undefined;
+  }
+
+  let best: string | undefined;
+  let most = 0;
+  let tied = false;
+  for (const [id, set] of nbrs) {
+    if (set.size > most) {
+      best = id;
+      most = set.size;
+      tied = false;
+    } else if (set.size === most && set.size > 0) {
+      tied = true;
+    }
+  }
+  return best !== undefined && !tied && most >= 3 ? best : undefined;
+};
+
+/**
+ * The ring around a chosen hub. A wheel keeps the ring the peel finds
+ * once the axle is gone, spurs and all. A star has no such ring, so
+ * the hub's direct neighbors become one, and anything deeper hangs
+ * off its first-reached parent, outward — the same spur machinery the
+ * ring case uses. Nodes the hub cannot reach still deserve a place,
+ * so they join the ring.
+ */
+const ringAroundHub = (
+  nodes: LayoutNodeInput[],
+  edges: LayoutEdgeInput[],
+  hubId: string
+): { rim: Set<string>; childrenOf: Map<string, string[]> } => {
+  const rest = nodes.filter((n) => n.id !== hubId);
+  const restEdges = edges.filter((e) => e.start !== hubId && e.end !== hubId);
+  const peeled = peel(rest, restEdges);
+  // A rim-rim edge proves a genuine cycle: cycle-free roots survive
+  // peeling too, but isolated. Trust the peel only past that proof —
+  // peeling is direction-blind, and on a hubless tree it can hang a
+  // spoke off its own leaf.
+  const genuineRing = restEdges.some(
+    (e) => e.start !== e.end && peeled.rim.has(e.start) && peeled.rim.has(e.end)
+  );
+  if (peeled.rim.size >= 3 && genuineRing) {
+    return peeled;
+  }
+
+  const nbrs = neighborsOf(nodes, edges);
+  const rim = new Set<string>();
+  const childrenOf = new Map<string, string[]>();
+  const seen = new Set([hubId]);
+  const queue = [hubId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const next of nbrs.get(current)!) {
+      if (seen.has(next)) {
+        continue;
+      }
+      seen.add(next);
+      if (current === hubId) {
+        rim.add(next);
+      } else {
+        if (!childrenOf.has(current)) {
+          childrenOf.set(current, []);
+        }
+        childrenOf.get(current)!.push(next);
+      }
+      queue.push(next);
+    }
+  }
+  for (const n of rest) {
+    if (!seen.has(n.id)) {
+      rim.add(n.id);
+    }
+  }
+  return { rim, childrenOf };
+};
+
 export const circularLayout = (
   nodes: LayoutNodeInput[],
   edges: LayoutEdgeInput[],
@@ -473,7 +616,7 @@ export const circularLayout = (
   const given = Object.fromEntries(
     Object.entries(options).filter(([, value]) => value !== undefined)
   ) as CircularLayoutOptions;
-  const { spacing, startAngle, ordering, bow, swerve, samples, direction } = {
+  const { spacing, startAngle, ordering, bow, swerve, samples, direction, hub } = {
     ...defaults,
     ...given,
   };
@@ -506,13 +649,30 @@ export const circularLayout = (
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
 
-  // The ring is the graph's 2-core; trees hang off it as spurs. A
-  // ring thinner than three nodes means the graph is mostly trees,
-  // and everything stays on the ring as before.
-  let { rim, childrenOf } = peel(nodes, edges);
-  if (rim.size < 3) {
-    rim = new Set(nodes.map((n) => n.id));
-    childrenOf = new Map();
+  // The center is earned, never assumed. An unmistakable star or
+  // wheel — or an explicitly named node — puts its hub at the origin
+  // and rings everything else. Otherwise the ring is the graph's
+  // 2-core with trees hanging off as spurs, and a ring thinner than
+  // three nodes keeps everything on the ring as before.
+  const hubId =
+    hub === 'none'
+      ? undefined
+      : hub === 'auto'
+        ? findHub(nodes, edges)
+        : byId.has(hub)
+          ? hub
+          : undefined;
+  const hubNode = hubId === undefined ? undefined : byId.get(hubId);
+  let rim: Set<string>;
+  let childrenOf: Map<string, string[]>;
+  if (hubId !== undefined) {
+    ({ rim, childrenOf } = ringAroundHub(nodes, edges, hubId));
+  } else {
+    ({ rim, childrenOf } = peel(nodes, edges));
+    if (rim.size < 3) {
+      rim = new Set(nodes.map((n) => n.id));
+      childrenOf = new Map();
+    }
   }
   const rimNodes = nodes.filter((n) => rim.has(n.id));
   const rimEdges = edges.filter((e) => rim.has(e.start) && rim.has(e.end));
@@ -621,6 +781,19 @@ export const circularLayout = (
         }
       }
     }
+    // A hub in the middle is one more thing the ring must clear:
+    // every spoke needs daylight between the hub's border and its
+    // ring node's border.
+    if (hubNode) {
+      for (let i = 0; i < nRim; i++) {
+        const dir = unit(onCircle(radius, angles[i]!));
+        const need =
+          supportExtent(byId.get(order[i]!)!, dir) + supportExtent(hubNode, dir) + spacing;
+        if (radius < need) {
+          scale = Math.max(scale, need / Math.max(radius, 1));
+        }
+      }
+    }
     if (scale > 1.001) {
       radius *= scale;
       continue;
@@ -634,6 +807,9 @@ export const circularLayout = (
   const posOf = new Map<string, Point>();
   for (const id of order) {
     posOf.set(id, onCircle(radius, angleOf.get(id)!));
+  }
+  if (hubId !== undefined) {
+    posOf.set(hubId, { x: 0, y: 0 });
   }
 
   // Hang each spur tree radially outward from its attachment,
@@ -827,5 +1003,11 @@ export const circularLayout = (
     return { ...e, points: quadratic(from, control, to, samples), onRim: false };
   });
 
-  return finish({ nodes: placed, edges: routed, order, radius });
+  return finish({
+    nodes: placed,
+    edges: routed,
+    order,
+    radius,
+    ...(hubId !== undefined && { hub: hubId }),
+  });
 };

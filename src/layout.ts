@@ -69,6 +69,10 @@ export interface CircularLayoutOptions {
   swerve?: number;
   /** Points sampled per edge path. */
   samples?: number;
+  /** Which way the walk travels from the top node. Default
+   *  'clockwise'; 'counterclockwise' mirrors the whole layout across
+   *  the vertical axis, so every guarantee carries over unchanged. */
+  direction?: 'clockwise' | 'counterclockwise';
 }
 
 export interface CircularLayoutResult {
@@ -87,6 +91,29 @@ const defaults = {
   bow: 0.35,
   swerve: 0.2,
   samples: 24,
+  direction: 'clockwise' as const,
+};
+
+/**
+ * Counter-clockwise is clockwise seen in a mirror. The solver always
+ * works clockwise — its sequential ring laying, mirror-pair
+ * symmetrization and arc sweeps all assume it — and the finished
+ * geometry is reflected across the vertical axis, which the ring is
+ * already symmetric about. Reflection preserves every distance, so no
+ * spacing or collision guarantee needs re-proving. `|| 0` keeps -0
+ * from flipping atan2 to π on axis-bound points.
+ */
+const mirrored = (result: CircularLayoutResult): CircularLayoutResult => {
+  for (const node of result.nodes) {
+    node.x = -node.x || 0;
+    node.angle = Math.atan2(node.y, node.x);
+  }
+  for (const edge of result.edges) {
+    for (const point of edge.points) {
+      point.x = -point.x || 0;
+    }
+  }
+  return result;
 };
 
 /** Half the diagonal: the safe radius of a box whatever its rotation. */
@@ -446,7 +473,11 @@ export const circularLayout = (
   const given = Object.fromEntries(
     Object.entries(options).filter(([, value]) => value !== undefined)
   ) as CircularLayoutOptions;
-  const { spacing, startAngle, ordering, bow, swerve, samples } = { ...defaults, ...given };
+  const { spacing, startAngle, ordering, bow, swerve, samples, direction } = {
+    ...defaults,
+    ...given,
+  };
+  const finish = direction === 'counterclockwise' ? mirrored : (r: CircularLayoutResult) => r;
 
   if (nodes.length === 0) {
     return { nodes: [], edges: [], order: [], radius: 0 };
@@ -454,7 +485,7 @@ export const circularLayout = (
   if (nodes.length === 1) {
     const only = nodes[0]!;
     const reach = footprint(only) + spacing;
-    return {
+    return finish({
       nodes: [{ id: only.id, x: 0, y: 0, angle: 0 }],
       edges: edges.map((e) => {
         if (e.start !== only.id || e.end !== only.id) {
@@ -470,7 +501,7 @@ export const circularLayout = (
       }),
       order: [only.id],
       radius: 0,
-    };
+    });
   }
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -796,5 +827,5 @@ export const circularLayout = (
     return { ...e, points: quadratic(from, control, to, samples), onRim: false };
   });
 
-  return { nodes: placed, edges: routed, order, radius };
+  return finish({ nodes: placed, edges: routed, order, radius });
 };

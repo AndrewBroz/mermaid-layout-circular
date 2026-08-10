@@ -150,6 +150,28 @@ const cases: Case[] = [
 `,
   },
   {
+    title: 'a wheel missing a rim arc, meshing a gear — the axle holds anyway',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart TB
+  P[Captain
+  Planet!]
+  Earth <--> P
+  Fire <--> P
+  Wind <--> P
+  Water <--> P
+  Heart <--> P
+  Heart <--> Wind
+  Heart <--> Earth
+  Earth <--> Fire
+  Fire <--> Water
+  Water <--> Vapor
+  Vapor <--> Ice
+  Ice <--> Water
+`,
+  },
+  {
     title: 'a wheel — the ring keeps its shape, the axle takes the middle',
     wide: true,
     text:

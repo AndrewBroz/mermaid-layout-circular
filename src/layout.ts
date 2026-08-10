@@ -683,7 +683,9 @@ const blocksOf = (ids: string[], nbrs: Map<string, Set<string>>): Set<string>[] 
  * removing even an ordinary ring member leaves a cycle (the ring
  * reroutes through the axle), so the removal test alone cannot tell
  * the axle from a busy ring member; uniqueness can. The candidate is
- * confirmed only if the ring survives whole without it.
+ * confirmed if it is adjacent to every other rim member — a dominant
+ * fan holds the center even when the outer ring is missing arcs — or
+ * if the ring survives whole without it.
  *
  * A star: no cycle anywhere (a cycle-free peel leaves a rim smaller
  * than three), and one node is strictly the busiest, with at least
@@ -713,6 +715,14 @@ const findHub = (nodes: LayoutNodeInput[], edges: LayoutEdgeInput[]): string | u
     }
     if (!best || tied || bestCount < 3) {
       return undefined;
+    }
+    // The dominant fan: a node adjacent to EVERY other rim member is
+    // a hub whatever the leftovers look like — spokes have special
+    // status, and a wheel missing rim arcs keeps its axle. This is
+    // the same graph as a ring with a full fan of chords, and when
+    // the two readings collide, the spokes win.
+    if (bestCount === rim.size - 1) {
+      return best;
     }
     const { rim: rest } = peel(
       nodes.filter((n) => n.id !== best),
@@ -1000,6 +1010,24 @@ const layoutRing = (
     }
     rim = new Set([...peeled.rim].filter((id) => !extracted.has(id)));
     childrenOf = peeled.childrenOf;
+    // A wheel can carry gears. With the satellites parked, the main
+    // block may still have an axle of its own — detect it on the
+    // block's subgraph, and step aside only if a satellite is
+    // anchored to the very node that would take the center.
+    const mainRimNodes = nodes.filter((n) => rim.has(n.id));
+    const mainRimEdges = edges.filter((e) => rim.has(e.start) && rim.has(e.end));
+    const axle =
+      hub === 'none'
+        ? undefined
+        : hub === 'auto'
+          ? findHub(mainRimNodes, mainRimEdges)
+          : rim.has(hub)
+            ? hub
+            : undefined;
+    if (axle !== undefined && !satellitePlans.some((plan) => plan.anchor === axle)) {
+      hubId = axle;
+      rim.delete(axle);
+    }
   } else {
     // The center is earned, never assumed. An unmistakable star or
     // wheel — or an explicitly named node — puts its hub at the

@@ -58,7 +58,26 @@ mermaid.registerLayoutLoaders(circularLayouts);
 Registration adds two layout names. `layout: circular` walks the ring
 clockwise from the top; `layout: circular-ccw` walks it
 counter-clockwise — the same layout seen in a mirror, so every
-guarantee about spacing, symmetry and arrows carries over unchanged.
+guarantee about spacing, symmetry and arrows carries over unchanged:
+
+```
+---
+config:
+  layout: circular-ccw
+---
+flowchart LR
+  E[Evaporation] --> C[Condensation]
+  C --> P[Precipitation]
+  P --> R[Runoff]
+  R --> O[Collection]
+  O --> E
+```
+
+![The water cycle running counter-clockwise: Evaporation on top, Condensation to its left, the arrows flowing leftward around the ring](docs/media/water-cycle-ccw.png)
+
+Setting `direction: 'counterclockwise'` in the options (below) does the
+same for diagrams that say `layout: circular`; the frontmatter name
+wins when both are given.
 
 Subgraphs are not supported yet. A diagram containing one still renders,
 but the subgraph box is skipped and a warning is logged. Diagram types

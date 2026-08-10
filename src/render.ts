@@ -22,27 +22,38 @@ type LayoutNode = LayoutData['nodes'][number];
 export const render = async (
   data4Layout: LayoutData,
   svg: SVG,
-  { insertEdge, insertEdgeLabel, insertMarkers, insertNode, log, positionEdgeLabel }: InternalHelpers,
+  {
+    insertCluster,
+    insertEdge,
+    insertEdgeLabel,
+    insertMarkers,
+    insertNode,
+    log,
+    positionEdgeLabel,
+  }: InternalHelpers,
   options?: RenderOptions
 ) => {
   const element = svg.select('g');
   insertMarkers(element, data4Layout.markers, data4Layout.type, data4Layout.diagramId);
 
+  // Clusters first in the DOM, so their boxes paint behind everything.
+  const clustersEl = element.insert('g').attr('class', 'clusters');
   const edgePaths = element.insert('g').attr('class', 'edgePaths');
   const edgeLabels = element.insert('g').attr('class', 'edgeLabels');
   const nodesEl = element.insert('g').attr('class', 'nodes');
 
   const nodeDb = new Map<string, LayoutNode>();
   const domOf = new Map<string, { attr: (name: string, value: string) => unknown }>();
+  const groupNodes: LayoutNode[] = [];
 
   // Sequential on purpose: the work is DOM insertion plus a forced
   // reflow per getBBox, so concurrency buys nothing, and interleaved
   // appends would make stacking order at overlaps vary run to run.
   for (const node of data4Layout.nodes) {
     if (node.isGroup) {
-      // Subgraphs have no circular story yet; a cycle drawn in a
-      // note is a flat graph. Loud, not silent.
-      log.warn(`circular layout: subgraph ${node.id} ignored — clusters are not supported`);
+      // A subgraph is not placed; it is drawn around where its
+      // members land, after the members know where that is.
+      groupNodes.push(node);
       continue;
     }
     nodeDb.set(node.id, node);
@@ -56,10 +67,13 @@ export const render = async (
     domOf.set(node.id, nodeEl as unknown as { attr: (name: string, value: string) => unknown });
   }
 
+  const groupIds = new Set(groupNodes.map((g) => g.id));
   const measured = [...nodeDb.values()].map((node) => ({
     id: node.id,
     width: node.width ?? 100,
     height: node.height ?? 50,
+    // Innermost membership only; outer boxes wrap inner ones later.
+    ...(node.parentId !== undefined && groupIds.has(node.parentId) && { group: node.parentId }),
   }));
 
   // Labels are measured before layout so a labeled gap on the rim
@@ -97,6 +111,82 @@ export const render = async (
     node.x = placed.x;
     node.y = placed.y;
     dom.attr('transform', `translate(${placed.x}, ${placed.y})`);
+  }
+
+  // Subgraph boxes wrap wherever their members landed: the padded
+  // union of member boxes, deepest group first so an outer box can
+  // wrap its inner boxes, drawn shallow-first so outer paints behind
+  // inner. The extra top headroom holds the title mermaid paints
+  // inside the box's upper edge.
+  if (groupNodes.length > 0) {
+    const PAD = 12;
+    const TITLE = 26;
+    const groupById = new Map(groupNodes.map((g) => [g.id, g]));
+    const depthOf = (g: LayoutNode): number => {
+      let depth = 0;
+      let cur = g.parentId;
+      const walked = new Set<string>();
+      while (cur !== undefined && groupById.has(cur) && !walked.has(cur)) {
+        walked.add(cur);
+        depth++;
+        cur = groupById.get(cur)!.parentId;
+      }
+      return depth;
+    };
+    interface Rect {
+      minX: number;
+      minY: number;
+      maxX: number;
+      maxY: number;
+    }
+    const rects = new Map<string, Rect>();
+    const deepFirst = [...groupNodes].sort((a, b) => depthOf(b) - depthOf(a));
+    for (const g of deepFirst) {
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const member of nodeDb.values()) {
+        if (member.parentId !== g.id || member.x === undefined || member.y === undefined) {
+          continue;
+        }
+        minX = Math.min(minX, member.x - (member.width ?? 0) / 2);
+        maxX = Math.max(maxX, member.x + (member.width ?? 0) / 2);
+        minY = Math.min(minY, member.y - (member.height ?? 0) / 2);
+        maxY = Math.max(maxY, member.y + (member.height ?? 0) / 2);
+      }
+      for (const child of groupNodes) {
+        const r = child.parentId === g.id ? rects.get(child.id) : undefined;
+        if (!r) {
+          continue;
+        }
+        minX = Math.min(minX, r.minX);
+        maxX = Math.max(maxX, r.maxX);
+        minY = Math.min(minY, r.minY);
+        maxY = Math.max(maxY, r.maxY);
+      }
+      if (!Number.isFinite(minX)) {
+        log.warn(`circular layout: subgraph ${g.id} has no placed members — box skipped`);
+        continue;
+      }
+      rects.set(g.id, {
+        minX: minX - PAD,
+        minY: minY - PAD - TITLE,
+        maxX: maxX + PAD,
+        maxY: maxY + PAD,
+      });
+    }
+    for (const g of [...deepFirst].reverse()) {
+      const r = rects.get(g.id);
+      if (!r) {
+        continue;
+      }
+      g.x = (r.minX + r.maxX) / 2;
+      g.y = (r.minY + r.maxY) / 2;
+      g.width = r.maxX - r.minX;
+      g.height = r.maxY - r.minY;
+      await insertCluster(clustersEl, g as Parameters<typeof insertCluster>[1]);
+    }
   }
 
   const routedById = new Map(result.edges.map((e) => [e.id, e]));

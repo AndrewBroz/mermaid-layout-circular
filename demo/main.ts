@@ -186,6 +186,36 @@ const cases: Case[] = [
 `,
   },
   {
+    title: 'a subgraph on the cycle — the box wraps one arc',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  E[Evaporation] --> C[Condensation]
+  subgraph Atmosphere
+    C --> P[Precipitation]
+  end
+  P --> R[Runoff]
+  subgraph Land
+    R --> O[Collection]
+  end
+  O --> E
+`,
+  },
+  {
+    title: 'a subgraph around a pendant cycle — the box wraps the satellite',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  P[Plan] --> B[Build] --> S[Ship] --> L[Learn] --> P
+  B --> D[Debug]
+  subgraph The debug loop
+    D --> F[Fix] --> T[Test] --> D
+  end
+`,
+  },
+  {
     title: 'ten nodes',
     wide: true,
     text:

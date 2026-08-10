@@ -352,6 +352,73 @@ describe('hub and spoke', () => {
   });
 });
 
+describe('subgraph contiguity', () => {
+  const ids = ['A', 'B', 'C', 'D', 'E'];
+  const grouped = (id: string, group?: string): LayoutNodeInput => ({ ...box(id), group });
+
+  const adjacentInOrder = (order: string[], a: string, b: string) => {
+    const i = order.indexOf(a);
+    const j = order.indexOf(b);
+    const gap = Math.abs(i - j);
+    return Math.min(gap, order.length - gap) === 1;
+  };
+
+  it('seats a subgraph side by side even when the cycle scatters its members', () => {
+    const { order } = circularLayout(
+      ids.map((id) => grouped(id, id === 'B' || id === 'D' ? 'g' : undefined)),
+      cycle(...ids)
+    );
+    expect(adjacentInOrder(order, 'B', 'D'), order.join(',')).toBe(true);
+  });
+
+  it('costs nothing when the members already sit together', () => {
+    const plain = circularLayout(ids.map((id) => box(id)), cycle(...ids));
+    const boxed = circularLayout(
+      ids.map((id) => grouped(id, id === 'B' || id === 'C' ? 'g' : undefined)),
+      cycle(...ids)
+    );
+    expect(adjacentInOrder(boxed.order, 'B', 'C')).toBe(true);
+    // Every cycle edge still joins rim neighbors, exactly as ungrouped.
+    for (const e of cycle(...ids)) {
+      expect(adjacentInOrder(boxed.order, e.start, e.end), e.id).toBe(true);
+    }
+    expect(new Set(boxed.order)).toEqual(new Set(plain.order));
+  });
+
+  it('keeps the run reading forward through the group', () => {
+    // Group C,D in a five-cycle: entry from B must land on C, so the
+    // written run B → C → D → E survives as rim neighbors.
+    const { order } = circularLayout(
+      ids.map((id) => grouped(id, id === 'C' || id === 'D' ? 'g' : undefined)),
+      cycle(...ids)
+    );
+    for (const e of cycle(...ids)) {
+      expect(adjacentInOrder(order, e.start, e.end), e.id).toBe(true);
+    }
+  });
+
+  it('widens the ring to make room for the box walls', () => {
+    const plain = circularLayout(ids.map((id) => box(id)), cycle(...ids));
+    const boxed = circularLayout(
+      ids.map((id) => grouped(id, id === 'B' || id === 'C' ? 'g' : undefined)),
+      cycle(...ids)
+    );
+    expect(boxed.radius).toBeGreaterThan(plain.radius);
+  });
+
+  it('groups ride into satellites untouched', () => {
+    const { satellites, order } = circularLayout(
+      [...ids, 'X', 'Y', 'Z'].map((id) =>
+        grouped(id, ['X', 'Y', 'Z'].includes(id) ? 'sat' : undefined)
+      ),
+      [...cycle(...ids), edge('C', 'X'), ...cycle('X', 'Y', 'Z')]
+    );
+    expect(new Set(order)).toEqual(new Set(ids));
+    expect(satellites).toHaveLength(1);
+    expect(new Set(satellites![0]!.members)).toEqual(new Set(['X', 'Y', 'Z']));
+  });
+});
+
 describe('satellite rings', () => {
   const ring = ['A', 'B', 'C', 'D', 'E'];
   const bridge = {

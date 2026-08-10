@@ -165,6 +165,27 @@ const cases: Case[] = [
 `,
   },
   {
+    title: 'a circle off a circle — the debug loop hangs off Build',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  P[Plan] --> B[Build] --> S[Ship] --> L[Learn] --> P
+  B --> D[Debug]
+  D --> F[Fix] --> T[Test] --> D
+`,
+  },
+  {
+    title: 'a figure-eight — two cycles sharing Sleep',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  W[Wake] --> K[Work] --> N[Dine] --> S[Sleep] --> W
+  S --> R[Dream] --> T[Toss] --> S
+`,
+  },
+  {
     title: 'ten nodes',
     wide: true,
     text:

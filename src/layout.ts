@@ -80,6 +80,16 @@ export interface CircularLayoutOptions {
   hub?: 'auto' | 'none' | (string & {});
 }
 
+export interface SatelliteRing {
+  /** The main-ring node the satellite hangs from or passes through. */
+  anchor: string;
+  /** The satellite's own rim, in walk order. */
+  members: string[];
+  /** Center of the satellite circle, in final coordinates. */
+  center: Point;
+  radius: number;
+}
+
 export interface CircularLayoutResult {
   nodes: PlacedNode[];
   edges: RoutedEdge[];
@@ -87,6 +97,8 @@ export interface CircularLayoutResult {
   radius: number;
   /** The node placed at the center, when the layout found one. */
   hub?: string;
+  /** Cycles hanging off the main ring, each drawn as its own circle. */
+  satellites?: SatelliteRing[];
 }
 
 const TAU = 2 * Math.PI;
@@ -120,6 +132,9 @@ const mirrored = (result: CircularLayoutResult): CircularLayoutResult => {
     for (const point of edge.points) {
       point.x = -point.x || 0;
     }
+  }
+  for (const satellite of result.satellites ?? []) {
+    satellite.center.x = -satellite.center.x || 0;
   }
   return result;
 };
@@ -486,6 +501,98 @@ const neighborsOf = (
   return nbrs;
 };
 
+/** Connected components over an undirected adjacency, as id sets. */
+const componentsOf = (ids: string[], nbrs: Map<string, Set<string>>): Set<string>[] => {
+  const seen = new Set<string>();
+  const out: Set<string>[] = [];
+  for (const id of ids) {
+    if (seen.has(id)) {
+      continue;
+    }
+    const comp = new Set<string>();
+    const queue = [id];
+    seen.add(id);
+    while (queue.length > 0) {
+      const current = queue.pop()!;
+      comp.add(current);
+      for (const nb of nbrs.get(current) ?? []) {
+        if (!seen.has(nb)) {
+          seen.add(nb);
+          queue.push(nb);
+        }
+      }
+    }
+    out.push(comp);
+  }
+  return out;
+};
+
+/**
+ * Biconnected components — the blocks — of an undirected graph, via
+ * Tarjan's lowpoint walk with an edge stack, iterative so deep chains
+ * cannot overflow. Blocks of three or more nodes are the circles;
+ * two-node blocks are bridges. Cut vertices belong to every block
+ * they join, which is exactly what lets a figure-eight share its
+ * waist node between two rings.
+ */
+const blocksOf = (ids: string[], nbrs: Map<string, Set<string>>): Set<string>[] => {
+  const num = new Map<string, number>();
+  const low = new Map<string, number>();
+  const parent = new Map<string, string>();
+  const edgeStack: [string, string][] = [];
+  const blocks: Set<string>[] = [];
+  let counter = 0;
+
+  const popBlock = (u: string, v: string) => {
+    const block = new Set<string>();
+    let top: [string, string];
+    do {
+      top = edgeStack.pop()!;
+      block.add(top[0]);
+      block.add(top[1]);
+    } while (top[0] !== u || top[1] !== v);
+    blocks.push(block);
+  };
+
+  for (const root of ids) {
+    if (num.has(root)) {
+      continue;
+    }
+    num.set(root, counter);
+    low.set(root, counter);
+    counter++;
+    const stack: [string, Iterator<string>][] = [[root, (nbrs.get(root) ?? new Set()).values()]];
+    while (stack.length > 0) {
+      const [u, iter] = stack[stack.length - 1]!;
+      const step = iter.next();
+      if (step.done) {
+        stack.pop();
+        const p = parent.get(u);
+        if (p !== undefined) {
+          low.set(p, Math.min(low.get(p)!, low.get(u)!));
+          if (low.get(u)! >= num.get(p)!) {
+            popBlock(p, u);
+          }
+        }
+        continue;
+      }
+      const v = step.value;
+      if (!num.has(v)) {
+        parent.set(v, u);
+        edgeStack.push([u, v]);
+        num.set(v, counter);
+        low.set(v, counter);
+        counter++;
+        stack.push([v, (nbrs.get(v) ?? new Set()).values()]);
+      } else if (v !== parent.get(u) && num.get(v)! < num.get(u)!) {
+        edgeStack.push([u, v]);
+        low.set(u, Math.min(low.get(u)!, num.get(v)!));
+      }
+    }
+  }
+  return blocks;
+};
+
 /**
  * Find the hub, if the shape is unmistakable. Two shapes qualify.
  *
@@ -606,6 +713,8 @@ const ringAroundHub = (
   return { rim, childrenOf };
 };
 
+type RingOptions = Omit<Required<CircularLayoutOptions>, 'direction'>;
+
 export const circularLayout = (
   nodes: LayoutNodeInput[],
   edges: LayoutEdgeInput[],
@@ -616,11 +725,25 @@ export const circularLayout = (
   const given = Object.fromEntries(
     Object.entries(options).filter(([, value]) => value !== undefined)
   ) as CircularLayoutOptions;
-  const { spacing, startAngle, ordering, bow, swerve, samples, direction, hub } = {
-    ...defaults,
-    ...given,
-  };
-  const finish = direction === 'counterclockwise' ? mirrored : (r: CircularLayoutResult) => r;
+  const { direction, ...ringOptions } = { ...defaults, ...given };
+  const result = layoutRing(nodes, edges, ringOptions, undefined);
+  return direction === 'counterclockwise' ? mirrored(result) : result;
+};
+
+/**
+ * One ring and everything hanging off it. Satellites recurse right
+ * back into this function: a pendant cycle is just a smaller ring,
+ * anchored so its own copy of the attachment node faces home. The
+ * mirror for counter-clockwise is applied once, by the wrapper, on
+ * the finished geometry.
+ */
+const layoutRing = (
+  nodes: LayoutNodeInput[],
+  edges: LayoutEdgeInput[],
+  opts: RingOptions,
+  anchor: string | undefined
+): CircularLayoutResult => {
+  const { spacing, startAngle, ordering, bow, swerve, samples, hub } = opts;
 
   if (nodes.length === 0) {
     return { nodes: [], edges: [], order: [], radius: 0 };
@@ -628,7 +751,7 @@ export const circularLayout = (
   if (nodes.length === 1) {
     const only = nodes[0]!;
     const reach = footprint(only) + spacing;
-    return finish({
+    return {
       nodes: [{ id: only.id, x: 0, y: 0, angle: 0 }],
       edges: edges.map((e) => {
         if (e.start !== only.id || e.end !== only.id) {
@@ -644,41 +767,165 @@ export const circularLayout = (
       }),
       order: [only.id],
       radius: 0,
-    });
+    };
   }
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
+  const peeled = peel(nodes, edges);
 
-  // The center is earned, never assumed. An unmistakable star or
-  // wheel — or an explicitly named node — puts its hub at the origin
-  // and rings everything else. Otherwise the ring is the graph's
-  // 2-core with trees hanging off as spurs, and a ring thinner than
-  // three nodes keeps everything on the ring as before.
-  const hubId =
-    hub === 'none'
-      ? undefined
-      : hub === 'auto'
-        ? findHub(nodes, edges)
-        : byId.has(hub)
-          ? hub
-          : undefined;
-  const hubNode = hubId === undefined ? undefined : byId.get(hubId);
+  // A 2-core holding more than one circle is not one ring: it is a
+  // main ring with pendant circles. The blocks tell them apart, the
+  // largest block (or the one holding the recursion's anchor) keeps
+  // the middle, and every other circle-bearing component becomes a
+  // satellite, laid out by recursion and parked outside.
+  interface SatellitePlan {
+    anchor: string;
+    /** True when the anchor itself rides the satellite circle — a
+     *  figure-eight waist. False means a bridge edge reaches out. */
+    tangent: boolean;
+    subNodes: LayoutNodeInput[];
+    subEdges: LayoutEdgeInput[];
+    /** The satellite node that must face home: the anchor's own copy
+     *  when tangent, the bridge's landing node otherwise. */
+    subAnchor: string;
+    /** Radius of the disc the whole satellite occupies, from a probe
+     *  solve; the disc is orientation-proof, so the probe's answer
+     *  holds for the real orientation too. */
+    discR: number;
+  }
+  const satellitePlans: SatellitePlan[] = [];
+  let mainSet: Set<string> | undefined;
+  if (peeled.rim.size >= 3) {
+    const rimNodeList = nodes.filter((n) => peeled.rim.has(n.id));
+    const rimEdgeList = edges.filter((e) => peeled.rim.has(e.start) && peeled.rim.has(e.end));
+    const blocks = blocksOf(
+      rimNodeList.map((n) => n.id),
+      neighborsOf(rimNodeList, rimEdgeList)
+    ).filter((b) => b.size >= 3);
+    if (blocks.length >= 2) {
+      const inputIndex = new Map(nodes.map((n, i) => [n.id, i]));
+      const earliest = (b: Set<string>) => Math.min(...[...b].map((id) => inputIndex.get(id)!));
+      const candidates =
+        anchor === undefined ? blocks : blocks.filter((b) => b.has(anchor));
+      mainSet = (candidates.length > 0 ? candidates : blocks).reduce((best, b) =>
+        b.size > best.size || (b.size === best.size && earliest(b) < earliest(best)) ? b : best
+      );
+    }
+  }
+
   let rim: Set<string>;
   let childrenOf: Map<string, string[]>;
-  if (hubId !== undefined) {
-    ({ rim, childrenOf } = ringAroundHub(nodes, edges, hubId));
-  } else {
-    ({ rim, childrenOf } = peel(nodes, edges));
-    if (rim.size < 3) {
-      rim = new Set(nodes.map((n) => n.id));
-      childrenOf = new Map();
+  let hubId: string | undefined;
+  if (mainSet !== undefined) {
+    // Components of the graph away from the main block. One that
+    // touches the 2-core carries a circle and becomes a satellite;
+    // pure trees stay with the spur machinery below.
+    const main = mainSet;
+    const restNodes = nodes.filter((n) => !main.has(n.id));
+    const restNbrs = neighborsOf(
+      restNodes,
+      edges.filter((e) => !main.has(e.start) && !main.has(e.end))
+    );
+    const extracted = new Set<string>();
+    for (const comp of componentsOf(restNodes.map((n) => n.id), restNbrs)) {
+      if (![...comp].some((id) => peeled.rim.has(id))) {
+        continue;
+      }
+      const attach = edges.filter(
+        (e) =>
+          (main.has(e.start) && comp.has(e.end)) || (main.has(e.end) && comp.has(e.start))
+      );
+      if (attach.length === 0) {
+        continue; // a free-floating cycle keeps its seat on the main ring
+      }
+      const anchorId = main.has(attach[0]!.start) ? attach[0]!.start : attach[0]!.end;
+      const tangent =
+        attach.filter((e) => e.start === anchorId || e.end === anchorId).length >= 2;
+      const subIds = new Set(comp);
+      if (tangent) {
+        subIds.add(anchorId);
+      }
+      const subNodes = nodes.filter((n) => subIds.has(n.id));
+      const subEdges = edges.filter((e) => subIds.has(e.start) && subIds.has(e.end));
+      const subAnchor = tangent
+        ? anchorId
+        : comp.has(attach[0]!.start)
+          ? attach[0]!.start
+          : attach[0]!.end;
+      const probe = layoutRing(subNodes, subEdges, { ...opts, hub: 'none' }, subAnchor);
+      const discR = Math.max(
+        ...probe.nodes.map((n) => Math.hypot(n.x, n.y) + footprint(byId.get(n.id)!))
+      );
+      satellitePlans.push({ anchor: anchorId, tangent, subNodes, subEdges, subAnchor, discR });
+      for (const id of comp) {
+        extracted.add(id);
+      }
     }
+    rim = new Set([...peeled.rim].filter((id) => !extracted.has(id)));
+    childrenOf = peeled.childrenOf;
+  } else {
+    // The center is earned, never assumed. An unmistakable star or
+    // wheel — or an explicitly named node — puts its hub at the
+    // origin and rings everything else. Otherwise the ring is the
+    // 2-core with trees hanging off as spurs, and a ring thinner
+    // than three nodes keeps everything on the ring as before.
+    hubId =
+      hub === 'none'
+        ? undefined
+        : hub === 'auto'
+          ? findHub(nodes, edges)
+          : byId.has(hub)
+            ? hub
+            : undefined;
+    if (hubId !== undefined) {
+      ({ rim, childrenOf } = ringAroundHub(nodes, edges, hubId));
+    } else {
+      ({ rim, childrenOf } = peeled);
+      if (rim.size < 3) {
+        rim = new Set(nodes.map((n) => n.id));
+        childrenOf = new Map();
+      }
+    }
+  }
+  const hubNode = hubId === undefined ? undefined : byId.get(hubId);
+
+  // For spacing, a satellite is one more thing its anchor carries: a
+  // disc as wide as the whole assembly.
+  const satWidthsOf = new Map<string, number[]>();
+  for (const plan of satellitePlans) {
+    if (!satWidthsOf.has(plan.anchor)) {
+      satWidthsOf.set(plan.anchor, []);
+    }
+    satWidthsOf.get(plan.anchor)!.push(2 * plan.discR + spacing);
   }
   const rimNodes = nodes.filter((n) => rim.has(n.id));
   const rimEdges = edges.filter((e) => rim.has(e.start) && rim.has(e.end));
 
-  const order =
+  let order =
     ordering === 'input' ? rimNodes.map((n) => n.id) : followEdges(rimNodes, rimEdges);
+  // A satellite is solved facing home: its anchor (or, when the
+  // anchor hangs off the ring, the ring node it hangs from) becomes
+  // the first seat, which startAngle then pins. Rotating a cyclic
+  // order changes no neighbor.
+  if (anchor !== undefined) {
+    const parentOf = new Map<string, string>();
+    for (const [parent, kids] of childrenOf) {
+      for (const kid of kids) {
+        parentOf.set(kid, parent);
+      }
+    }
+    const seats = new Set(order);
+    let seat: string | undefined = anchor;
+    const walked = new Set<string>();
+    while (seat !== undefined && !seats.has(seat) && !walked.has(seat)) {
+      walked.add(seat);
+      seat = parentOf.get(seat);
+    }
+    if (seat !== undefined && seats.has(seat)) {
+      const at = order.indexOf(seat);
+      order = [...order.slice(at), ...order.slice(0, at)];
+    }
+  }
   const nRim = order.length;
 
   // What a rim node claims of the circle: its own tangential extent,
@@ -697,12 +944,15 @@ export const circularLayout = (
   const effectiveExtent = (id: string, angle: number): number => {
     const kids = childrenOf.get(id) ?? [];
     const own = tangentialExtent(byId.get(id)!, angle);
-    if (kids.length === 0) {
+    const carried = [
+      ...kids.map((kid) => treeWidth(kid, angle)),
+      ...(satWidthsOf.get(id) ?? []),
+    ];
+    if (carried.length === 0) {
       return own;
     }
-    const kidsWidth =
-      kids.reduce((sum, kid) => sum + treeWidth(kid, angle), 0) + (kids.length - 1) * spacing;
-    return Math.max(own, kidsWidth / 2);
+    const width = carried.reduce((a, b) => a + b, 0) + (carried.length - 1) * spacing;
+    return Math.max(own, width / 2);
   };
 
   // A labeled edge between rim neighbors needs its gap to hold the
@@ -744,19 +994,23 @@ export const circularLayout = (
     const extentSum = 2 * extents.reduce((a, b) => a + b, 0);
     const nextRadius = Math.max((nRim * targetGap + extentSum) / TAU, radius);
     const gap = (TAU * nextRadius - extentSum) / nRim;
-    // Lay the ring sequentially, then symmetrize mirror pairs
-    // (i and n−i reflect across the vertical axis: θ ↦ π − θ).
+    // Lay the ring sequentially, then symmetrize mirror pairs: i and
+    // n−i reflect across the axis through the first node, whatever
+    // angle that node was pinned to — a satellite pins it to face
+    // its anchor's home, the default pins it to the top.
     const next: number[] = [startAngle];
     for (let i = 1; i < nRim; i++) {
       next.push(next[i - 1]! + (extents[i - 1]! + extents[i]! + gap) / nextRadius);
     }
     for (let i = 1; i * 2 < nRim; i++) {
-      const mirrored = (next[i]! + (Math.PI - next[nRim - i]!)) / 2;
-      next[i] = mirrored;
-      next[nRim - i] = Math.PI - mirrored;
+      const phiNear = next[i]! - startAngle;
+      const phiFar = next[nRim - i]! - startAngle;
+      const mirroredPhi = (phiNear + (TAU - phiFar)) / 2;
+      next[i] = startAngle + mirroredPhi;
+      next[nRim - i] = startAngle + TAU - mirroredPhi;
     }
     if (nRim % 2 === 0) {
-      next[nRim / 2] = Math.PI / 2;
+      next[nRim / 2] = startAngle + Math.PI;
     }
     angles = next;
     radius = nextRadius;
@@ -838,6 +1092,79 @@ export const circularLayout = (
     placeChildren(id, angle, radius + radialExtent(byId.get(id)!, angle));
   }
 
+  // Park each satellite on its anchor's ray. The probe solve above
+  // only sized the disc; the real solve happens HERE, with the
+  // sub-ring's first seat pinned to face home — so every extent, gap
+  // and border crossing is computed against boxes exactly where they
+  // will render, and the move into place is a pure translation.
+  // Boxes are axis-aligned and do not rotate with a layout; a
+  // rotation would tear every arc endpoint off its border, so no
+  // rotation may ever touch finished geometry. For a tangent
+  // satellite the anchor's copy lands exactly on its main-ring seat,
+  // and the two circles genuinely touch. Siblings sharing an anchor
+  // take neighboring rays, which preserves that tangency.
+  const satellites: SatelliteRing[] = [];
+  const satRouted = new Map<string, RoutedEdge>();
+  const plansByAnchor = new Map<string, SatellitePlan[]>();
+  for (const plan of satellitePlans) {
+    if (!plansByAnchor.has(plan.anchor)) {
+      plansByAnchor.set(plan.anchor, []);
+    }
+    plansByAnchor.get(plan.anchor)!.push(plan);
+  }
+  for (const [anchorId, plans] of plansByAnchor) {
+    const theta = angleOf.get(anchorId)!;
+    const anchorPos = posOf.get(anchorId)!;
+    const anchorNode = byId.get(anchorId)!;
+    for (const [k, plan] of plans.entries()) {
+      const swing =
+        plans.length === 1
+          ? 0
+          : ((k - (plans.length - 1) / 2) * (2 * plan.discR + spacing)) / radius;
+      const ray = theta + swing;
+      const sub = layoutRing(
+        plan.subNodes,
+        plan.subEdges,
+        { ...opts, hub: 'none', startAngle: ray + Math.PI },
+        plan.subAnchor
+      );
+      const subA = sub.nodes.find((n) => n.id === plan.subAnchor)!;
+      const aDist = Math.hypot(subA.x, subA.y);
+      const center = plan.tangent
+        ? {
+            x: anchorPos.x + aDist * Math.cos(ray),
+            y: anchorPos.y + aDist * Math.sin(ray),
+          }
+        : onCircle(
+            radius +
+              radialExtent(anchorNode, theta) +
+              spacing * 0.8 +
+              radialExtent(byId.get(plan.subAnchor)!, ray) +
+              aDist,
+            ray
+          );
+      const place = (p: Point): Point => ({ x: p.x + center.x, y: p.y + center.y });
+      for (const n of sub.nodes) {
+        if (plan.tangent && n.id === anchorId) {
+          continue; // the waist keeps its main-ring seat
+        }
+        posOf.set(n.id, place(n));
+      }
+      for (const e of sub.edges) {
+        satRouted.set(e.id, { ...e, points: e.points.map(place) });
+      }
+      satellites.push({
+        anchor: anchorId,
+        members: sub.order,
+        center: { ...center },
+        radius: sub.radius,
+      });
+      for (const nested of sub.satellites ?? []) {
+        satellites.push({ ...nested, center: place(nested.center) });
+      }
+    }
+  }
+
   const placed: PlacedNode[] = nodes.map((node) => {
     const pos = posOf.get(node.id) ?? { x: 0, y: 0 };
     return { id: node.id, ...pos, angle: Math.atan2(pos.y, pos.x) };
@@ -865,6 +1192,13 @@ export const circularLayout = (
   }
 
   const routed: RoutedEdge[] = edges.map((e) => {
+    // A satellite's interior edges were routed by the recursion and
+    // moved with it; the bridge edge is not among them, so it falls
+    // through to the spur branch below and draws straight.
+    const fromSatellite = satRouted.get(e.id);
+    if (fromSatellite) {
+      return fromSatellite;
+    }
     const pStart = posOf.get(e.start);
     const pEnd = posOf.get(e.end);
     if (!pStart || !pEnd) {
@@ -1003,11 +1337,12 @@ export const circularLayout = (
     return { ...e, points: quadratic(from, control, to, samples), onRim: false };
   });
 
-  return finish({
+  return {
     nodes: placed,
     edges: routed,
     order,
     radius,
     ...(hubId !== undefined && { hub: hubId }),
-  });
+    ...(satellites.length > 0 && { satellites }),
+  };
 };

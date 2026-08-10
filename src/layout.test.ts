@@ -352,6 +352,153 @@ describe('hub and spoke', () => {
   });
 });
 
+describe('satellite rings', () => {
+  const ring = ['A', 'B', 'C', 'D', 'E'];
+  const bridge = {
+    nodes: [...ring, 'X', 'Y', 'Z'].map((id) => box(id)),
+    edges: [...cycle(...ring), edge('C', 'X'), ...cycle('X', 'Y', 'Z')],
+  };
+  const eight = {
+    nodes: [...ring, 'X', 'Y'].map((id) => box(id)),
+    edges: [...cycle(...ring), edge('C', 'X'), edge('X', 'Y'), edge('Y', 'C')],
+  };
+
+  it('keeps the main cycle a true ring when a pendant cycle hangs off a bridge', () => {
+    const { nodes, radius, order, satellites } = circularLayout(bridge.nodes, bridge.edges);
+    expect(new Set(order)).toEqual(new Set(ring));
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    for (const id of ring) {
+      expect(Math.hypot(byId.get(id)!.x, byId.get(id)!.y), id).toBeCloseTo(radius, 6);
+    }
+    expect(satellites).toHaveLength(1);
+    expect(satellites![0]!.anchor).toBe('C');
+    expect(new Set(satellites![0]!.members)).toEqual(new Set(['X', 'Y', 'Z']));
+  });
+
+  it('draws the pendant as its own circle, wholly outside the main ring', () => {
+    const { nodes, radius, satellites } = circularLayout(bridge.nodes, bridge.edges);
+    const sat = satellites![0]!;
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    for (const id of ['X', 'Y', 'Z']) {
+      const n = byId.get(id)!;
+      expect(dist(n, sat.center), `${id} on satellite circle`).toBeCloseTo(sat.radius, 4);
+      expect(Math.hypot(n.x, n.y), `${id} outside main ring`).toBeGreaterThan(radius);
+    }
+  });
+
+  it('meets the figure-eight at the shared node: both circles pass exactly through C', () => {
+    const { nodes, radius, satellites } = circularLayout(eight.nodes, eight.edges);
+    expect(satellites).toHaveLength(1);
+    const sat = satellites![0]!;
+    expect(sat.anchor).toBe('C');
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const c = byId.get('C')!;
+    expect(Math.hypot(c.x, c.y)).toBeCloseTo(radius, 6);
+    expect(dist(c, sat.center)).toBeCloseTo(sat.radius, 4);
+    for (const id of ['X', 'Y']) {
+      const n = byId.get(id)!;
+      expect(dist(n, sat.center), id).toBeCloseTo(sat.radius, 4);
+      expect(Math.hypot(n.x, n.y), id).toBeGreaterThan(radius);
+    }
+    // Tangency: the satellite's center lies on the ray from the origin
+    // through C, one satellite-radius beyond the rim.
+    const cross = c.x * sat.center.y - c.y * sat.center.x;
+    expect(Math.abs(cross) / (radius * Math.hypot(sat.center.x, sat.center.y))).toBeLessThan(1e-4);
+    expect(Math.hypot(sat.center.x, sat.center.y)).toBeCloseTo(radius + sat.radius, 4);
+  });
+
+  it('gives the middle to the bigger cycle, whatever the writing order', () => {
+    const { order, satellites } = circularLayout(
+      bridge.nodes,
+      [...cycle('X', 'Y', 'Z'), edge('C', 'X'), ...cycle(...ring)]
+    );
+    expect(new Set(order)).toEqual(new Set(ring));
+    expect(satellites![0]!.anchor).toBe('C');
+  });
+
+  it('reaches a circle off a circle off a circle', () => {
+    const ids = [...ring, 'X', 'Y', 'Z', 'U', 'V', 'W'];
+    const { nodes, satellites } = circularLayout(
+      ids.map((id) => box(id)),
+      [
+        ...cycle(...ring),
+        edge('C', 'X'),
+        ...cycle('X', 'Y', 'Z'),
+        edge('Z', 'U'),
+        ...cycle('U', 'V', 'W'),
+      ]
+    );
+    expect(satellites).toHaveLength(2);
+    const byAnchor = new Map(satellites!.map((s) => [s.anchor, s]));
+    expect(new Set(byAnchor.get('C')!.members)).toEqual(new Set(['X', 'Y', 'Z']));
+    expect(new Set(byAnchor.get('Z')!.members)).toEqual(new Set(['U', 'V', 'W']));
+    const inner = byAnchor.get('C')!.center;
+    const outer = byAnchor.get('Z')!.center;
+    expect(Math.hypot(outer.x, outer.y)).toBeGreaterThan(Math.hypot(inner.x, inner.y));
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    for (const id of ['U', 'V', 'W']) {
+      const n = byId.get(id)!;
+      expect(dist(n, outer), id).toBeCloseTo(byAnchor.get('Z')!.radius, 4);
+    }
+  });
+
+  it('never lets any two boxes collide, ring and satellites together', () => {
+    for (const graph of [bridge, eight]) {
+      const { nodes } = circularLayout(graph.nodes, graph.edges);
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const p = nodes[i]!;
+          const q = nodes[j]!;
+          const overlap = Math.abs(p.x - q.x) < 80 && Math.abs(p.y - q.y) < 40;
+          expect(overlap, `${p.id} overlaps ${q.id}`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('mirrors satellites along with everything else under ccw', () => {
+    const cw = circularLayout(eight.nodes, eight.edges);
+    const ccw = circularLayout(eight.nodes, eight.edges, { direction: 'counterclockwise' });
+    const sat = ccw.satellites![0]!;
+    expect(sat.center.x).toBeCloseTo(-cw.satellites![0]!.center.x, 4);
+    expect(sat.center.y).toBeCloseTo(cw.satellites![0]!.center.y, 4);
+    const byId = new Map(ccw.nodes.map((n) => [n.id, n]));
+    for (const id of ['X', 'Y']) {
+      expect(dist(byId.get(id)!, sat.center), id).toBeCloseTo(sat.radius, 4);
+    }
+  });
+
+  it('lands every arrow on a border, satellite arcs included', () => {
+    const onBorder = (p: { x: number; y: number }, n: { x: number; y: number }) => {
+      const dx = Math.abs(p.x - n.x);
+      const dy = Math.abs(p.y - n.y);
+      const eps = 1e-6;
+      return (
+        (Math.abs(dx - 40) < eps && dy <= 20 + eps) ||
+        (Math.abs(dy - 20) < eps && dx <= 40 + eps)
+      );
+    };
+    for (const graph of [bridge, eight]) {
+      const { nodes, edges: routed } = circularLayout(graph.nodes, graph.edges);
+      const byId = new Map(nodes.map((n) => [n.id, n]));
+      for (const e of routed) {
+        const first = e.points[0]!;
+        const last = e.points[e.points.length - 1]!;
+        expect(onBorder(first, byId.get(e.start)!), `${e.id} start`).toBe(true);
+        expect(onBorder(last, byId.get(e.end)!), `${e.id} end`).toBe(true);
+      }
+    }
+  });
+
+  it('leaves single-cycle graphs without satellites', () => {
+    const plain = circularLayout(
+      ring.map((id) => box(id)),
+      cycle(...ring)
+    );
+    expect(plain.satellites ?? []).toHaveLength(0);
+  });
+});
+
 describe('direction', () => {
   const ids = ['A', 'B', 'C', 'D', 'E'];
   const sized = [box('A', 200, 60), box('B', 40, 40), box('C', 120, 50), box('D', 40, 40), box('E', 90, 45)];

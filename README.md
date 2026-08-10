@@ -219,9 +219,35 @@ Setting `direction: 'counterclockwise'` in the options (below) does the
 same for diagrams that say `layout: circular`; the frontmatter name
 wins when both are given.
 
-Subgraphs are not supported yet. A diagram containing one still renders,
-but the subgraph box is skipped and a warning is logged. Diagram types
-other than flowcharts are out of scope, since each one owns its layout.
+Subgraphs draw as boxes around their members. On the ring, a group's
+members are seated side by side so the box wraps one arc:
+
+```
+---
+config:
+  layout: circular
+---
+flowchart LR
+  E[Evaporation] --> C[Condensation]
+  subgraph Atmosphere
+    C --> P[Precipitation]
+  end
+  P --> R[Runoff]
+  subgraph Land
+    R --> O[Collection]
+  end
+  O --> E
+```
+
+![The water cycle with Atmosphere and Land boxes each wrapping two adjacent nodes of the ring](docs/media/subgraph-arc.png)
+
+A subgraph around a pendant cycle wraps the whole satellite:
+
+![A product loop with the debug triangle drawn as a satellite circle inside its own titled box](docs/media/subgraph-satellite.png)
+
+An edge pointing at a subgraph itself (rather than a node inside it)
+is not routed yet; it is dropped with a warning. Diagram types other
+than flowcharts are out of scope, since each one owns its layout.
 
 To use the layout in Obsidian, install
 [obsidian-mermaid-circular](https://github.com/AndrewBroz/obsidian-mermaid-circular),

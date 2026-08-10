@@ -880,6 +880,9 @@ const layoutRing = (
      *  solve; the disc is orientation-proof, so the probe's answer
      *  holds for the real orientation too. */
     discR: number;
+    /** What the satellite claims of the ring: its measured intrusion
+     *  into the band the ring's boxes occupy, not its whole disc. */
+    claimWidth: number;
   }
   const satellitePlans: SatellitePlan[] = [];
   let mainSet: Set<string> | undefined;
@@ -950,7 +953,47 @@ const layoutRing = (
       const discR = Math.max(
         ...probe.nodes.map((n) => Math.hypot(n.x, n.y) + footprint(byId.get(n.id)!))
       );
-      satellitePlans.push({ anchor: anchorId, tangent, subNodes, subEdges, subAnchor, discR });
+      // A satellite touches the ring; it does not sit on it. Its
+      // claim on the rim is not the whole disc but the width of what
+      // actually reaches down into the band the ring's boxes occupy:
+      // each probe node is projected onto the home axis (the anchor's
+      // direction from the sub-center — the probe pins the anchor, so
+      // the final orientation only rotates this picture rigidly), and
+      // only nodes within a rim-footprint-plus-gap of the rim
+      // contribute their sideways reach. A small gear's far members
+      // clear the band and cost nothing; a big gear's shoulders
+      // genuinely crowd the anchor's neighbors and still pay.
+      const anchorProbe = probe.nodes.find((n) => n.id === subAnchor)!;
+      const aDist = Math.hypot(anchorProbe.x, anchorProbe.y);
+      const home =
+        aDist > 0 ? { x: anchorProbe.x / aDist, y: anchorProbe.y / aDist } : { x: 0, y: -1 };
+      const rimAt = aDist + (tangent ? 0 : spacing * 0.8);
+      // How deep the band reaches: as far out as a ring box can — its
+      // footprint. Breathing room is not part of the band; the gap
+      // equation and the claim's own spacing already pay for it, and
+      // counting it here would drag a small gear's far members back
+      // into the band and re-inflate the claim.
+      const band = Math.max(...nodes.filter((n) => main.has(n.id)).map(footprint));
+      let halfClaim = 0;
+      for (const n of probe.nodes) {
+        if (n.id === anchorId) {
+          continue;
+        }
+        const fp = footprint(byId.get(n.id)!);
+        const toward = n.x * home.x + n.y * home.y;
+        if (toward + fp >= rimAt - band) {
+          halfClaim = Math.max(halfClaim, Math.abs(n.x * home.y - n.y * home.x) + fp);
+        }
+      }
+      satellitePlans.push({
+        anchor: anchorId,
+        tangent,
+        subNodes,
+        subEdges,
+        subAnchor,
+        discR,
+        claimWidth: 2 * halfClaim + spacing,
+      });
       for (const id of comp) {
         extracted.add(id);
       }
@@ -983,14 +1026,14 @@ const layoutRing = (
   }
   const hubNode = hubId === undefined ? undefined : byId.get(hubId);
 
-  // For spacing, a satellite is one more thing its anchor carries: a
-  // disc as wide as the whole assembly.
+  // For spacing, a satellite is one more thing its anchor carries —
+  // but only as wide as what it pushes into the ring's own band.
   const satWidthsOf = new Map<string, number[]>();
   for (const plan of satellitePlans) {
     if (!satWidthsOf.has(plan.anchor)) {
       satWidthsOf.set(plan.anchor, []);
     }
-    satWidthsOf.get(plan.anchor)!.push(2 * plan.discR + spacing);
+    satWidthsOf.get(plan.anchor)!.push(plan.claimWidth);
   }
   const rimNodes = nodes.filter((n) => rim.has(n.id));
   const rimEdges = edges.filter((e) => rim.has(e.start) && rim.has(e.end));

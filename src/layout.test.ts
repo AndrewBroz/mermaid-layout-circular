@@ -631,6 +631,57 @@ describe('satellite rings', () => {
     });
   });
 
+  describe('satellite claims', () => {
+    const gears = {
+      nodes: ['A1', 'A2', 'A3', 'A4', 'A5', 'B1', 'B2', 'C1', 'C2'].map((id) => box(id)),
+      edges: [
+        ...cycle('A1', 'A2', 'A3', 'A4', 'A5'),
+        edge('A2', 'B1'),
+        edge('B1', 'B2'),
+        edge('B2', 'A2'),
+        edge('B1', 'C1'),
+        edge('C1', 'C2'),
+        edge('C2', 'B1'),
+      ],
+    };
+
+    it('a meshed gear train no longer starves the big ring of its evenness', () => {
+      const { nodes, order } = circularLayout(gears.nodes, gears.edges);
+      const byId = new Map(nodes.map((n) => [n.id, n]));
+      const angles = order.map((id) => {
+        const n = byId.get(id)!;
+        return Math.atan2(n.y, n.x);
+      });
+      const gaps = angles.map((a, i) => {
+        let d = angles[(i + 1) % angles.length]! - a;
+        while (d <= 0) {
+          d += 2 * Math.PI;
+        }
+        while (d > 2 * Math.PI) {
+          d -= 2 * Math.PI;
+        }
+        return d;
+      });
+      const ratio = Math.max(...gaps) / Math.min(...gaps);
+      // A satellite touches the ring; it does not sit on it. Equal
+      // boxes should keep near-equal gaps — the anchor's may breathe
+      // a little, not swallow the circle.
+      expect(ratio, gaps.map((g) => g.toFixed(2)).join(',')).toBeLessThan(1.25);
+    });
+
+    it('still keeps every box clear of every other, gears included', () => {
+      const { nodes } = circularLayout(gears.nodes, gears.edges);
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const p = nodes[i]!;
+          const q = nodes[j]!;
+          const overlap = Math.abs(p.x - q.x) < 80 && Math.abs(p.y - q.y) < 40;
+          expect(overlap, `${p.id} overlaps ${q.id}`).toBe(false);
+        }
+      }
+    });
+  });
+
   it('leaves single-cycle graphs without satellites', () => {
     const plain = circularLayout(
       ring.map((id) => box(id)),

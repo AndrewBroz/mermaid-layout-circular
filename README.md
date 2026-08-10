@@ -136,6 +136,42 @@ a plain ring, or a ring with chords never elects a hub. The `hub`
 option overrides it either way: `'none'` keeps every node on the
 ring, a node id names the hub explicitly.
 
+Circles hang off circles as circles. A pendant cycle is not flattened
+onto the main ring: it becomes a satellite — its own smaller circle,
+parked outside the rim on its anchor's ray:
+
+```
+---
+config:
+  layout: circular
+---
+flowchart LR
+  P[Plan] --> B[Build] --> S[Ship] --> L[Learn] --> P
+  B --> D[Debug]
+  D --> F[Fix] --> T[Test] --> D
+```
+
+![A four-node product loop with a debug triangle drawn as its own smaller circle beyond Build](docs/media/satellite-ring.png)
+
+Two cycles sharing a node draw as a figure-eight, the circles
+genuinely tangent at the shared node:
+
+```
+---
+config:
+  layout: circular
+---
+flowchart LR
+  W[Wake] --> K[Work] --> N[Dine] --> S[Sleep] --> W
+  S --> R[Dream] --> T[Toss] --> S
+```
+
+![Two circles meeting at a shared Sleep node, the day loop large and the dream loop small](docs/media/figure-eight.png)
+
+The largest cycle keeps the middle, and the nesting recurses — a
+circle hanging off a circle hanging off a circle walks outward, each
+ring a true circle of its own.
+
 ## Usage
 
 Select the layout per diagram in frontmatter, the same way

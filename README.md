@@ -136,7 +136,33 @@ a plain ring, or a ring with a chord or two never elects a hub. But
 spokes have special status: a node adjacent to every other ring
 member holds the center even when the outer ring is missing arcs,
 and a wheel that meshes a gear off one of its rim members keeps its
-axle too. The `hub` option overrides it either way: `'none'` keeps
+axle too — both at once, here:
+
+```
+---
+config:
+  layout: circular
+---
+flowchart TB
+  P[Captain
+  Planet!]
+  Earth <--> P
+  Fire <--> P
+  Wind <--> P
+  Water <--> P
+  Heart <--> P
+  Heart <--> Wind
+  Heart <--> Earth
+  Earth <--> Fire
+  Fire <--> Water
+  Water <--> Vapor
+  Vapor <--> Ice
+  Ice <--> Water
+```
+
+![Captain Planet centered among five ringed elements, the Water-Wind arc absent, with a Vapor-Ice gear meshing off Water](docs/media/captain-planet.png)
+
+The `hub` option overrides the detection either way: `'none'` keeps
 every node on the ring, a node id names the hub explicitly.
 
 Circles hang off circles as circles. A pendant cycle is not flattened

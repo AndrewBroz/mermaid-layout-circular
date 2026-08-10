@@ -186,6 +186,19 @@ const cases: Case[] = [
 `,
   },
   {
+    title: 'three gears — each loop spins against the one it meshes with',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  A[Mine] --> B[Smelt] --> C[Cast] --> D[Sell] --> E[Invest] --> A
+  B --> F[Scrap]
+  F --> G[Sort] --> B
+  F --> H[Shred]
+  H --> I[Melt] --> F
+`,
+  },
+  {
     title: 'a subgraph on the cycle — the box wraps one arc',
     wide: true,
     text:

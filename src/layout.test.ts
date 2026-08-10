@@ -557,6 +557,80 @@ describe('satellite rings', () => {
     }
   });
 
+  describe('gear flow', () => {
+    // The signed short-way step of a directed edge about a center:
+    // positive reads clockwise on screen, negative counter-clockwise.
+    const stepSign = (
+      center: { x: number; y: number },
+      from: { x: number; y: number },
+      to: { x: number; y: number }
+    ) => {
+      let delta =
+        Math.atan2(to.y - center.y, to.x - center.x) -
+        Math.atan2(from.y - center.y, from.x - center.x);
+      while (delta > Math.PI) {
+        delta -= 2 * Math.PI;
+      }
+      while (delta < -Math.PI) {
+        delta += 2 * Math.PI;
+      }
+      return Math.sign(delta);
+    };
+
+    it('spins a figure-eight satellite against its main ring, like meshing gears', () => {
+      const { nodes, satellites } = circularLayout(eight.nodes, eight.edges);
+      const byId = new Map(nodes.map((n) => [n.id, n]));
+      const origin = { x: 0, y: 0 };
+      const mainSpin = stepSign(origin, byId.get('A')!, byId.get('B')!);
+      const satSpin = stepSign(satellites![0]!.center, byId.get('C')!, byId.get('X')!);
+      expect(mainSpin).not.toBe(0);
+      expect(satSpin).toBe(-mainSpin);
+    });
+
+    it('keeps the opposition through the ccw mirror', () => {
+      const { nodes, satellites } = circularLayout(eight.nodes, eight.edges, {
+        direction: 'counterclockwise',
+      });
+      const byId = new Map(nodes.map((n) => [n.id, n]));
+      const mainSpin = stepSign({ x: 0, y: 0 }, byId.get('A')!, byId.get('B')!);
+      const satSpin = stepSign(satellites![0]!.center, byId.get('C')!, byId.get('X')!);
+      expect(satSpin).toBe(-mainSpin);
+    });
+
+    it('alternates through a chain of three meshing loops', () => {
+      const ids = ['A1', 'A2', 'A3', 'A4', 'A5', 'B1', 'B2', 'C1', 'C2'];
+      const { nodes, satellites } = circularLayout(
+        ids.map((id) => box(id)),
+        [
+          ...cycle('A1', 'A2', 'A3', 'A4', 'A5'),
+          edge('A2', 'B1'),
+          edge('B1', 'B2'),
+          edge('B2', 'A2'),
+          edge('B1', 'C1'),
+          edge('C1', 'C2'),
+          edge('C2', 'B1'),
+        ]
+      );
+      expect(satellites).toHaveLength(2);
+      const byId = new Map(nodes.map((n) => [n.id, n]));
+      const first = satellites!.find((s) => s.anchor === 'A2')!;
+      const second = satellites!.find((s) => s.anchor === 'B1')!;
+      const mainSpin = stepSign({ x: 0, y: 0 }, byId.get('A1')!, byId.get('A2')!);
+      const firstSpin = stepSign(first.center, byId.get('A2')!, byId.get('B1')!);
+      const secondSpin = stepSign(second.center, byId.get('B1')!, byId.get('C1')!);
+      expect(firstSpin).toBe(-mainSpin);
+      expect(secondSpin).toBe(mainSpin);
+    });
+
+    it('leaves a bridge satellite spinning with its parent — a shaft, not a tooth', () => {
+      const { nodes, satellites } = circularLayout(bridge.nodes, bridge.edges);
+      const byId = new Map(nodes.map((n) => [n.id, n]));
+      const mainSpin = stepSign({ x: 0, y: 0 }, byId.get('A')!, byId.get('B')!);
+      const satSpin = stepSign(satellites![0]!.center, byId.get('X')!, byId.get('Y')!);
+      expect(satSpin).toBe(mainSpin);
+    });
+  });
+
   it('leaves single-cycle graphs without satellites', () => {
     const plain = circularLayout(
       ring.map((id) => box(id)),

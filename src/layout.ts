@@ -823,7 +823,13 @@ const layoutRing = (
   nodes: LayoutNodeInput[],
   edges: LayoutEdgeInput[],
   opts: RingOptions,
-  anchor: string | undefined
+  anchor: string | undefined,
+  /** Seat the ring in reverse, flipping its direction of travel.
+   *  Tangent satellites mesh like gears — each spins against its
+   *  parent — so every tangent recursion toggles this; a bridge
+   *  satellite turns with its parent, like a shaft, and passes it
+   *  through unchanged. */
+  reversed = false
 ): CircularLayoutResult => {
   const { spacing, startAngle, ordering, bow, swerve, samples, hub } = opts;
 
@@ -934,7 +940,13 @@ const layoutRing = (
         : comp.has(attach[0]!.start)
           ? attach[0]!.start
           : attach[0]!.end;
-      const probe = layoutRing(subNodes, subEdges, { ...opts, hub: 'none' }, subAnchor);
+      const probe = layoutRing(
+        subNodes,
+        subEdges,
+        { ...opts, hub: 'none' },
+        subAnchor,
+        tangent ? !reversed : reversed
+      );
       const discR = Math.max(
         ...probe.nodes.map((n) => Math.hypot(n.x, n.y) + footprint(byId.get(n.id)!))
       );
@@ -1007,6 +1019,11 @@ const layoutRing = (
       const at = order.indexOf(seat);
       order = [...order.slice(at), ...order.slice(0, at)];
     }
+  }
+  if (reversed) {
+    // Cyclic reversal about the first seat: the anchor stays pinned,
+    // everyone else walks the other way around.
+    order = [order[0]!, ...order.slice(1).reverse()];
   }
   const nRim = order.length;
 
@@ -1211,7 +1228,8 @@ const layoutRing = (
         plan.subNodes,
         plan.subEdges,
         { ...opts, hub: 'none', startAngle: ray + Math.PI },
-        plan.subAnchor
+        plan.subAnchor,
+        plan.tangent ? !reversed : reversed
       );
       const subA = sub.nodes.find((n) => n.id === plan.subAnchor)!;
       const aDist = Math.hypot(subA.x, subA.y);

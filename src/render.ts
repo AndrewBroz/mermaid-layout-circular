@@ -109,6 +109,7 @@ export const render = async (
     start: edge.start ?? '',
     end: edge.end ?? '',
     labelWidth: edge.label ? (edge as { width?: number }).width : undefined,
+    labelHeight: edge.label ? (edge as { height?: number }).height : undefined,
   }));
 
   const nodeSpacing = data4Layout.config.flowchart?.nodeSpacing;

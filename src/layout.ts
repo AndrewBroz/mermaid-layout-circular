@@ -41,8 +41,13 @@ export interface LayoutEdgeInput {
   start: string;
   end: string;
   /** Measured width of the edge's label, when it has one. A labeled
-   *  gap on the rim widens so the label can live inside it. */
+   *  gap — on the rim or along a spur — widens so the label can live
+   *  inside it. */
   labelWidth?: number;
+  /** Measured height of the edge's label. A radial gap cares about
+   *  the label's projection onto the spur direction, which needs
+   *  both dimensions. */
+  labelHeight?: number;
 }
 
 export interface Point {
@@ -918,7 +923,11 @@ const layoutRing = (
       rimNodeList.map((n) => n.id),
       neighborsOf(rimNodeList, rimEdgeList)
     ).filter((b) => b.size >= 3);
-    if (blocks.length >= 2) {
+    // One block is enough: even without a second circle in the
+    // 2-core, a pendant pair joined by two or more edges is a cycle
+    // the simple-graph peel cannot see, and the extraction below is
+    // what finds it.
+    if (blocks.length >= 1) {
       const inputIndex = new Map(nodes.map((n, i) => [n.id, i]));
       const earliest = (b: Set<string>) => Math.min(...[...b].map((id) => inputIndex.get(id)!));
       const candidates =
@@ -944,9 +953,6 @@ const layoutRing = (
     );
     const extracted = new Set<string>();
     for (const comp of componentsOf(restNodes.map((n) => n.id), restNbrs)) {
-      if (![...comp].some((id) => peeled.rim.has(id))) {
-        continue;
-      }
       const attach = edges.filter(
         (e) =>
           (main.has(e.start) && comp.has(e.end)) || (main.has(e.end) && comp.has(e.start))
@@ -957,6 +963,15 @@ const layoutRing = (
       const anchorId = main.has(attach[0]!.start) ? attach[0]!.start : attach[0]!.end;
       const tangent =
         attach.filter((e) => e.start === anchorId || e.end === anchorId).length >= 2;
+      // A satellite must carry a circle: either the component holds
+      // 2-core members (a cycle of its own), or it hangs from one
+      // anchor by two or more edges — a pendant lens, a cycle the
+      // simple-graph peel cannot see. A tree on a single edge stays
+      // with the spur machinery.
+      const carriesCycle = [...comp].some((id) => peeled.rim.has(id));
+      if (!carriesCycle && !tangent) {
+        continue;
+      }
       const subIds = new Set(comp);
       if (tangent) {
         subIds.add(anchorId);
@@ -1024,7 +1039,18 @@ const layoutRing = (
       }
     }
     rim = new Set([...peeled.rim].filter((id) => !extracted.has(id)));
-    childrenOf = peeled.childrenOf;
+    // A satellite member the peel had hung as a spur child (a
+    // pendant lens rides the peel as a leaf) must leave the spur
+    // forest, or its parent reserves room for it twice and the spur
+    // placement fights the satellite's.
+    childrenOf = new Map(
+      [...peeled.childrenOf]
+        .map(([parent, kids]): [string, string[]] => [
+          parent,
+          kids.filter((kid) => !extracted.has(kid)),
+        ])
+        .filter(([, kids]) => kids.length > 0)
+    );
     // A wheel can carry gears. With the satellites parked, the main
     // block may still have an axle of its own — detect it on the
     // block's subgraph, and step aside only if a satellite is
@@ -1174,6 +1200,30 @@ const layoutRing = (
   }
   const targetGap = Math.max(spacing, labeledGapNeed);
 
+  // A labeled spur needs radial room the same way a labeled rim gap
+  // needs arc: the gap between the two borders must hold the label's
+  // projection onto the spur direction, plus breathing room. The
+  // widest label of the pair decides.
+  const pairLabel = new Map<string, { w: number; h: number }>();
+  for (const e of edges) {
+    if (!e.labelWidth) {
+      continue;
+    }
+    const key = [e.start, e.end].sort().join('|');
+    const prev = pairLabel.get(key) ?? { w: 0, h: 0 };
+    pairLabel.set(key, {
+      w: Math.max(prev.w, e.labelWidth),
+      h: Math.max(prev.h, e.labelHeight ?? 20),
+    });
+  }
+  const radialLabelNeed = (a: string, b: string, angle: number): number => {
+    const label = pairLabel.get([a, b].sort().join('|'));
+    if (!label) {
+      return 0;
+    }
+    return Math.abs(Math.cos(angle)) * label.w + Math.abs(Math.sin(angle)) * label.h + 24;
+  };
+
   // Solve angles so the free arc between neighboring borders is the
   // same everywhere — the eye judges the arrows, not the angles. The
   // extents depend on the angles and the angles on the extents, so
@@ -1233,12 +1283,17 @@ const layoutRing = (
     }
     // A hub in the middle is one more thing the ring must clear:
     // every spoke needs daylight between the hub's border and its
-    // ring node's border.
+    // ring node's border — enough for the spoke's label, when it
+    // carries one.
     if (hubNode) {
       for (let i = 0; i < nRim; i++) {
         const dir = unit(onCircle(radius, angles[i]!));
+        const daylight = Math.max(
+          spacing,
+          radialLabelNeed(hubId!, order[i]!, angles[i]!)
+        );
         const need =
-          extent(byId.get(order[i]!)!, dir) + extent(hubNode, dir) + spacing;
+          extent(byId.get(order[i]!)!, dir) + extent(hubNode, dir) + daylight;
         if (radius < need) {
           scale = Math.max(scale, need / Math.max(radius, 1));
         }
@@ -1277,7 +1332,9 @@ const layoutRing = (
       const centerOffset = cursor + widths[i]! / 2;
       cursor += widths[i]! + spacing;
       const kidRadius =
-        parentOuterRadius + spacing * 0.8 + radialExtent(node, parentAngle);
+        parentOuterRadius +
+        Math.max(spacing * 0.8, radialLabelNeed(parentId, kid, parentAngle)) +
+        radialExtent(node, parentAngle);
       const kidAngle = parentAngle + centerOffset / kidRadius;
       posOf.set(kid, onCircle(kidRadius, kidAngle));
       placeChildren(kid, kidAngle, kidRadius + radialExtent(node, kidAngle));
@@ -1335,7 +1392,7 @@ const layoutRing = (
         : onCircle(
             radius +
               radialExtent(anchorNode, theta) +
-              spacing * 0.8 +
+              Math.max(spacing * 0.8, radialLabelNeed(anchorId, plan.subAnchor, ray)) +
               radialExtent(byId.get(plan.subAnchor)!, ray) +
               aDist,
             ray
@@ -1428,11 +1485,17 @@ const layoutRing = (
 
     if (!bothOnRim) {
       // A spur edge: essentially radial, drawn straight from center
-      // to center and trimmed to the borders by the renderer.
-      // Siblings bow apart sideways.
+      // to center. Siblings bow apart sideways — in the canonical
+      // frame of the sorted pair, not the edge's own travel frame,
+      // or an opposite pair's perpendiculars cancel and the two
+      // curves collapse onto one line.
       const mid = { x: (pStart.x + pEnd.x) / 2, y: (pStart.y + pEnd.y) / 2 };
       const across = unit({ x: pEnd.y - pStart.y, y: -(pEnd.x - pStart.x) });
-      const control = { x: mid.x + across.x * spread * 18, y: mid.y + across.y * spread * 18 };
+      const side = e.start < e.end ? 1 : -1;
+      const control = {
+        x: mid.x + across.x * spread * 18 * side,
+        y: mid.y + across.y * spread * 18 * side,
+      };
       return {
         ...e,
         points: throughBorders(

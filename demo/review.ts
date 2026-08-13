@@ -317,7 +317,55 @@ const userCases: Case[] = [
   },
 ];
 
+/** The label-room and pendant-lens review: labeled spurs, a two-node
+ *  lens alone, and the same lens meshed onto a ring, both ways. */
+const kinkCases: Case[] = [
+  {
+    title: 'labeled spurs — the arrows make room for the labels',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart TD
+  Earth --> Fire --> Water --> Earth
+  Earth -->|melts to become| Lava
+  Fire -->|is a form of| Plasma
+  Water -->|evaporates| Vapor
+`,
+  },
+  {
+    title: 'two nodes alone — the lens',
+    text:
+      frontmatter('circular') +
+      `flowchart TD
+  Earth -->|melt| Lava
+  Lava -->|harden| Earth
+`,
+  },
+  {
+    title: 'a pendant two-cycle without labels — a lens off the ring',
+    text:
+      frontmatter('circular') +
+      `flowchart TD
+  Earth --> Fire --> Water --> Earth
+  Earth --> Lava
+  Lava --> Earth
+`,
+  },
+  {
+    title: 'a pendant two-cycle with labels',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart TD
+  Earth --> Fire --> Water --> Earth
+  Earth -->|melt| Lava
+  Lava -->|harden| Earth
+`,
+  },
+];
+
 const sets: Record<string, { subtitle: string; cases: Case[] }> = {
+  kinks: { subtitle: 'labeled spurs and pendant lenses', cases: kinkCases },
   existing: { subtitle: 'the existing gallery, unchanged sources', cases },
   circles: { subtitle: 'the same gallery with every node a circle', cases: circleCases },
   user: { subtitle: 'the four-meshed-triangles review pair', cases: userCases },

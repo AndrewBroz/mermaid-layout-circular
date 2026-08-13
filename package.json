@@ -34,7 +34,7 @@
   "author": "Andrew Broz",
   "repository": {
     "type": "git",
-    "url": "https://github.com/AndrewBroz/mermaid-layout-circular"
+    "url": "git+https://github.com/AndrewBroz/mermaid-layout-circular.git"
   },
   "license": "MIT",
   "peerDependencies": {

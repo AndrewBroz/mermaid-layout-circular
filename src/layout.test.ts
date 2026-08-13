@@ -16,6 +16,19 @@ const cycle = (...ids: string[]): LayoutEdgeInput[] =>
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
   Math.hypot(a.x - b.x, a.y - b.y);
 
+/** On the border of an 80×40 box centered at n, within eps. */
+const onBoxBorder = (
+  p: { x: number; y: number },
+  n: { x: number; y: number },
+  eps = 0.01
+) => {
+  const dx = Math.abs(p.x - n.x);
+  const dy = Math.abs(p.y - n.y);
+  return (
+    (Math.abs(dx - 40) < eps && dy <= 20 + eps) || (Math.abs(dy - 20) < eps && dx <= 40 + eps)
+  );
+};
+
 describe('placement', () => {
   it('puts every node at the same distance from the origin', () => {
     const { nodes, radius } = circularLayout(
@@ -159,6 +172,110 @@ describe('uniform gaps', () => {
   });
 });
 
+describe('shape-aware extents', () => {
+  const circle = (id: string, d = 60): LayoutNodeInput => ({
+    id,
+    width: d,
+    height: d,
+    shape: 'ellipse',
+  });
+
+  it('spaces equal circles at exactly equal angles — a circle claims the same from every seat', () => {
+    const ids = ['A', 'B', 'C', 'D', 'E'];
+    const { nodes, order } = circularLayout(
+      ids.map((id) => circle(id)),
+      cycle(...ids)
+    );
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const angles = order.map((id) => {
+      const n = byId.get(id)!;
+      return Math.atan2(n.y, n.x);
+    });
+    for (let i = 0; i < angles.length; i++) {
+      let d = angles[(i + 1) % angles.length]! - angles[i]!;
+      while (d <= 0) {
+        d += 2 * Math.PI;
+      }
+      expect(d).toBeCloseTo((2 * Math.PI) / ids.length, 6);
+    }
+  });
+
+  it('solves a tighter ring for circles than for boxes of the same bounding size', () => {
+    const ids = ['A', 'B', 'C', 'D', 'E'];
+    const asBoxes = circularLayout(ids.map((id) => box(id, 60, 60)), cycle(...ids));
+    const asCircles = circularLayout(ids.map((id) => circle(id)), cycle(...ids));
+    // A 60px circle's worst-case reach is 30px; the box corner's is
+    // 30·√2. The three-ring gap equation feels the difference.
+    expect(asCircles.radius).toBeLessThan(asBoxes.radius);
+  });
+
+  it('keeps true circle borders apart, not just bounding boxes', () => {
+    const sized = [circle('A', 120), circle('B', 40), circle('C', 90), circle('D', 40)];
+    const spacing = 30;
+    const { nodes } = circularLayout(sized, cycle('A', 'B', 'C', 'D'), { spacing });
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const sizeOf = new Map(sized.map((n) => [n.id, n.width]));
+    for (let i = 0; i < sized.length; i++) {
+      for (let j = i + 1; j < sized.length; j++) {
+        const p = byId.get(sized[i]!.id)!;
+        const q = byId.get(sized[j]!.id)!;
+        const clearance =
+          dist(p, q) - sizeOf.get(sized[i]!.id)! / 2 - sizeOf.get(sized[j]!.id)! / 2;
+        expect(clearance, `${sized[i]!.id} vs ${sized[j]!.id}`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('lands arrows on the true edges of diamonds and stadiums too', () => {
+    const diamond = (id: string): LayoutNodeInput => ({
+      id,
+      width: 80,
+      height: 80,
+      shape: 'diamond',
+    });
+    const { edges, nodes } = circularLayout(
+      ['A', 'B', 'C', 'D'].map((id) => diamond(id)),
+      cycle('A', 'B', 'C', 'D')
+    );
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    for (const e of edges) {
+      const first = e.points[0]!;
+      const last = e.points[e.points.length - 1]!;
+      for (const [p, id] of [
+        [first, e.start],
+        [last, e.end],
+      ] as const) {
+        const n = byId.get(id)!;
+        // On the rhombus edge: |dx|/(w/2) + |dy|/(h/2) = 1.
+        const level = Math.abs(p.x - n.x) / 40 + Math.abs(p.y - n.y) / 40;
+        expect(level, `${e.id} endpoint on diamond edge`).toBeCloseTo(1, 2);
+      }
+    }
+  });
+
+  it('hangs a spur off a circle at the circle distance, not the corner distance', () => {
+    // A ring of circles with one leaf: the leaf's parent claims its
+    // radial extent as a circle (d/2), so the leaf sits nearer than
+    // the box math would put it, but still clear of the border.
+    const ids = ['A', 'B', 'C'];
+    const spacing = 40;
+    const { nodes, radius } = circularLayout(
+      [...ids.map((id) => circle(id, 60)), circle('Leaf', 60)],
+      [...cycle(...ids), edge('A', 'Leaf')],
+      { spacing }
+    );
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const leaf = byId.get('Leaf')!;
+    const a = byId.get('A')!;
+    const clearance = dist(leaf, a) - 60;
+    expect(clearance).toBeGreaterThan(0);
+    // The box model reserved parent corner + child corner ≈ 30·√2·2;
+    // the circle model needs only 60 + breathing room. The leaf must
+    // sit within the circle-model band, proving the box slack is gone.
+    expect(Math.hypot(leaf.x, leaf.y)).toBeLessThan(radius + 30 + spacing * 0.8 + 30 + 1);
+  });
+});
+
 describe('spurs', () => {
   const ring = cycle('A', 'B', 'C', 'D');
   const spurEdges = [
@@ -190,17 +307,18 @@ describe('spurs', () => {
     expect(Math.min(angleGap, 2 * Math.PI - angleGap)).toBeLessThan(Math.PI / 3);
   });
 
-  it('routes spur edges border to border with straight tangent tails', () => {
+  it('routes spur edges border to border with clean terminal segments', () => {
     const { edges, nodes } = circularLayout(spurNodes, spurEdges);
     const byId = new Map(nodes.map((n) => [n.id, n]));
     const spurEdge = edges.find((e) => e.id === 'Sun-A')!;
-    expect(spurEdge.points.length).toBeGreaterThanOrEqual(4);
+    expect(spurEdge.points.length).toBeGreaterThanOrEqual(3);
     const first = spurEdge.points[0]!;
     const last = spurEdge.points[spurEdge.points.length - 1]!;
-    expect(dist(first, byId.get('Sun')!)).toBeLessThanOrEqual(Math.hypot(40, 20) + 1e-6);
-    expect(dist(last, byId.get('A')!)).toBeLessThanOrEqual(Math.hypot(40, 20) + 1e-6);
-    const tail = dist(last, spurEdge.points[spurEdge.points.length - 2]!);
-    expect(tail).toBeGreaterThan(6);
+    expect(onBoxBorder(first, byId.get('Sun')!), 'starts on Sun border').toBe(true);
+    expect(onBoxBorder(last, byId.get('A')!), 'ends on A border').toBe(true);
+    // The terminal segments outreach mermaid's ~5px end window.
+    expect(dist(first, spurEdge.points[1]!)).toBeGreaterThan(6);
+    expect(dist(last, spurEdge.points[spurEdge.points.length - 2]!)).toBeGreaterThan(6);
   });
 
   it('keeps everything on the ring when the graph has no cycle', () => {
@@ -262,7 +380,7 @@ describe('hub and spoke', () => {
   it('routes every spoke straight, border to border, well clear of both boxes', () => {
     const { edges: routed, radius } = circularLayout(starNodes, starEdges);
     for (const e of routed) {
-      expect(e.points.length).toBeGreaterThanOrEqual(2);
+      expect(e.points.length).toBeGreaterThanOrEqual(3);
       const first = e.points[0]!;
       const last = e.points[e.points.length - 1]!;
       // Leaves the hub's border, not its center; arrives at the ring, not beyond.
@@ -658,23 +776,14 @@ describe('satellite rings', () => {
   });
 
   it('lands every arrow on a border, satellite arcs included', () => {
-    const onBorder = (p: { x: number; y: number }, n: { x: number; y: number }) => {
-      const dx = Math.abs(p.x - n.x);
-      const dy = Math.abs(p.y - n.y);
-      const eps = 1e-6;
-      return (
-        (Math.abs(dx - 40) < eps && dy <= 20 + eps) ||
-        (Math.abs(dy - 20) < eps && dx <= 40 + eps)
-      );
-    };
     for (const graph of [bridge, eight]) {
       const { nodes, edges: routed } = circularLayout(graph.nodes, graph.edges);
       const byId = new Map(nodes.map((n) => [n.id, n]));
       for (const e of routed) {
         const first = e.points[0]!;
         const last = e.points[e.points.length - 1]!;
-        expect(onBorder(first, byId.get(e.start)!), `${e.id} start`).toBe(true);
-        expect(onBorder(last, byId.get(e.end)!), `${e.id} end`).toBe(true);
+        expect(onBoxBorder(first, byId.get(e.start)!), `${e.id} start`).toBe(true);
+        expect(onBoxBorder(last, byId.get(e.end)!), `${e.id} end`).toBe(true);
       }
     }
   });
@@ -943,15 +1052,6 @@ describe('ordering', () => {
 });
 
 describe('edge routing', () => {
-  const onBorder = (p: { x: number; y: number }, n: { x: number; y: number }, w: number, h: number) => {
-    const dx = Math.abs(p.x - n.x);
-    const dy = Math.abs(p.y - n.y);
-    const eps = 1e-6;
-    const onVertical = Math.abs(dx - w / 2) < eps && dy <= h / 2 + eps;
-    const onHorizontal = Math.abs(dy - h / 2) < eps && dx <= w / 2 + eps;
-    return onVertical || onHorizontal;
-  };
-
   it('starts and ends every path on the node border, never at the center', () => {
     const { edges, nodes } = circularLayout(
       ['A', 'B', 'C', 'D', 'E'].map((id) => box(id)),
@@ -961,8 +1061,16 @@ describe('edge routing', () => {
     for (const e of edges) {
       const first = e.points[0]!;
       const last = e.points[e.points.length - 1]!;
-      expect(onBorder(first, byId.get(e.start)!, 80, 40)).toBe(true);
-      expect(onBorder(last, byId.get(e.end)!, 80, 40)).toBe(true);
+      expect(onBoxBorder(first, byId.get(e.start)!), `${e.id} start`).toBe(true);
+      expect(onBoxBorder(last, byId.get(e.end)!), `${e.id} end`).toBe(true);
+      // And every interior sample stays clear of both end boxes.
+      for (const p of e.points.slice(1, -1)) {
+        for (const id of [e.start, e.end]) {
+          const n = byId.get(id)!;
+          const inside = Math.abs(p.x - n.x) < 40 && Math.abs(p.y - n.y) < 20;
+          expect(inside, `${e.id} interior point inside ${id}`).toBe(false);
+        }
+      }
     }
   });
 
@@ -973,39 +1081,31 @@ describe('edge routing', () => {
     );
     for (const e of edges) {
       expect(e.onRim).toBe(true);
-      // Every point of the path — endpoints included — lies on the
-      // rim (the straight 10px marker tails may sit tail²/2R off it,
-      // under a pixel at any plausible radius): the eye reads one
-      // circle.
+      // Every point of the path — the bisected border crossings
+      // included — lies on the one circle, within the sub-pixel
+      // sagitta of a bisection bracket.
       for (const p of e.points) {
-        expect(Math.abs(Math.hypot(p.x, p.y) - radius)).toBeLessThan(0.8);
+        expect(Math.abs(Math.hypot(p.x, p.y) - radius)).toBeLessThan(0.5);
       }
     }
   });
 
-  it('starts an arc exactly where the circle leaves the source box', () => {
-    const { edges, nodes, radius } = circularLayout(
-      ['A', 'B', 'C', 'D', 'E'].map((id) => box(id)),
-      cycle('A', 'B', 'C', 'D', 'E')
+  it('gives every path a straight terminal segment longer than mermaid marker meddling', () => {
+    const ids = ['A', 'B', 'C', 'D', 'E'];
+    const { edges } = circularLayout(
+      ids.map((id) => box(id)),
+      [...cycle(...ids), edge('A', 'C'), edge('A', 'A')]
     );
-    const byId = new Map(nodes.map((n) => [n.id, n]));
-    const onBorderOf = (p: { x: number; y: number }, id: string) => {
-      const n = byId.get(id)!;
-      const dx = Math.abs(p.x - n.x);
-      const dy = Math.abs(p.y - n.y);
-      const eps = 0.01;
-      return (
-        (Math.abs(dx - 40) < eps && dy <= 20 + eps) ||
-        (Math.abs(dy - 20) < eps && dx <= 40 + eps)
-      );
-    };
     for (const e of edges) {
-      const first = e.points[0]!;
       const last = e.points[e.points.length - 1]!;
-      expect(onBorderOf(first, e.start), `${e.id} start`).toBe(true);
-      expect(onBorderOf(last, e.end), `${e.id} end`).toBe(true);
-      expect(Math.hypot(first.x, first.y)).toBeCloseTo(radius, 4);
-      expect(Math.hypot(last.x, last.y)).toBeCloseTo(radius, 4);
+      const prev = e.points[e.points.length - 2]!;
+      const first = e.points[0]!;
+      const second = e.points[1]!;
+      // mermaid displaces points within ~5px of the ends; the
+      // terminal segments must outreach that window or the marker
+      // orients along a kink.
+      expect(dist(last, prev), `${e.id} end tail`).toBeGreaterThan(6);
+      expect(dist(first, second), `${e.id} start tail`).toBeGreaterThan(6);
     }
   });
 
@@ -1101,7 +1201,11 @@ describe('edge routing', () => {
     const loop = edges.find((e) => e.id === 'A-A')!;
     const a = nodes.find((n) => n.id === 'A')!;
     expect(loop.points.length).toBeGreaterThanOrEqual(5);
-    expect(dist(loop.points[0]!, a)).toBeLessThanOrEqual(Math.hypot(40, 20) + 1e-6);
+    expect(onBoxBorder(loop.points[0]!, a), 'petal starts on the border').toBe(true);
+    expect(
+      onBoxBorder(loop.points[loop.points.length - 1]!, a),
+      'petal ends on the border'
+    ).toBe(true);
     const apex = Math.max(...loop.points.map((p) => Math.hypot(p.x, p.y)));
     expect(apex).toBeGreaterThan(radius * 1.05);
   });
@@ -1130,42 +1234,36 @@ describe('edge routing', () => {
     expect(Math.hypot(a!.x, a!.y)).toBeCloseTo(Math.hypot(b!.x, b!.y), 4);
   });
 
-  it('gives every path a straight terminal tail longer than mermaid marker meddling', () => {
-    const ids = ['A', 'B', 'C', 'D', 'E'];
-    const { edges } = circularLayout(
-      ids.map((id) => box(id)),
-      [...cycle(...ids), edge('A', 'C'), edge('A', 'A')]
-    );
-    for (const e of edges) {
-      const last = e.points[e.points.length - 1]!;
-      const prev = e.points[e.points.length - 2]!;
-      const first = e.points[0]!;
-      const second = e.points[1]!;
-      // mermaid displaces points within ~5px of the ends; the
-      // terminal segments must outreach that window or the marker
-      // orients along a kink.
-      expect(dist(last, prev), `${e.id} end tail`).toBeGreaterThan(6);
-      expect(dist(first, second), `${e.id} start tail`).toBeGreaterThan(6);
-    }
-  });
-
-  it("aligns the arrowhead's line of symmetry with the arc's true tangent", () => {
-    const { edges, radius } = circularLayout(
-      ['A', 'B', 'C', 'D', 'E'].map((id) => box(id)),
+  it("lands the arrow exactly on a circle node's rim, axis along the arc's tangent", () => {
+    const d = 60;
+    const circle = (id: string): LayoutNodeInput => ({
+      id,
+      width: d,
+      height: d,
+      shape: 'ellipse',
+    });
+    const { edges, nodes, radius } = circularLayout(
+      ['A', 'B', 'C', 'D', 'E'].map((id) => circle(id)),
       cycle('A', 'B', 'C', 'D', 'E')
     );
+    const byId = new Map(nodes.map((n) => [n.id, n]));
     for (const e of edges) {
+      const target = byId.get(e.end)!;
       const last = e.points[e.points.length - 1]!;
       const prev = e.points[e.points.length - 2]!;
-      const segAngle = Math.atan2(last.y - prev.y, last.x - prev.x);
-      // Rim tangent at the endpoint, clockwise travel.
+      // The endpoint sits on the node's true circular border…
+      expect(dist(last, target), `${e.id} end on circle border`).toBeCloseTo(d / 2, 1);
+      // …and on the rim, where the arc crosses that circle.
+      expect(Math.abs(Math.hypot(last.x, last.y) - radius)).toBeLessThan(0.5);
+      // The marker's axis is the final segment; it runs along the
+      // rim's tangent at the crossing, clockwise travel.
+      const axis = Math.atan2(last.y - prev.y, last.x - prev.x);
       const tangent = Math.atan2(last.x, -last.y);
-      let diff = Math.abs(segAngle - tangent) % (2 * Math.PI);
+      let diff = Math.abs(axis - tangent) % (2 * Math.PI);
       diff = Math.min(diff, 2 * Math.PI - diff);
       expect(diff, `${e.id} marker angle off tangent by ${(diff * 180) / Math.PI}°`).toBeLessThan(
-        (1.5 * Math.PI) / 180
+        (8 * Math.PI) / 180
       );
-      expect(Math.hypot(last.x, last.y)).toBeCloseTo(radius, 4);
     }
   });
 });

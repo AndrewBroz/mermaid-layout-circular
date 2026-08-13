@@ -68,10 +68,29 @@ export const render = async (
   }
 
   const groupIds = new Set(groupNodes.map((g) => g.id));
+  // The silhouette family per mermaid shape name (aliases included):
+  // the spacing math and border crossings measure the true outline
+  // for these instead of the bounding box. Every unlisted shape stays
+  // a box, which over-reserves and never overlaps.
+  const families: Record<string, 'ellipse' | 'diamond' | 'stadium'> = {
+    circle: 'ellipse',
+    circ: 'ellipse',
+    doublecircle: 'ellipse',
+    'dbl-circ': 'ellipse',
+    'double-circle': 'ellipse',
+    question: 'diamond',
+    diamond: 'diamond',
+    diam: 'diamond',
+    decision: 'diamond',
+    stadium: 'stadium',
+    pill: 'stadium',
+    terminal: 'stadium',
+  };
   const measured = [...nodeDb.values()].map((node) => ({
     id: node.id,
     width: node.width ?? 100,
     height: node.height ?? 50,
+    shape: families[node.shape ?? ''] ?? ('box' as const),
     // Innermost membership only; outer boxes wrap inner ones later.
     ...(node.parentId !== undefined && groupIds.has(node.parentId) && { group: node.parentId }),
   }));
@@ -257,10 +276,11 @@ export const render = async (
       (edgeWithPath as { x?: number; y?: number }).x = labelAt.x;
       (edgeWithPath as { x?: number; y?: number }).y = labelAt.y;
 
-      // The layout already anchored both endpoints on the node
-      // borders; skipIntersect stops insertEdge from re-trimming
-      // toward interior samples, which is what seats the arrowhead
-      // flush on the border it points into.
+      // The layout anchored both endpoints exactly on the silhouette
+      // borders (bisected on the curve, shape-aware) with straight
+      // ≥10px terminal segments; skipIntersect stops insertEdge from
+      // re-trimming toward interior samples, which would bury and
+      // rotate the arrowheads it just seated flush.
       const paths = insertEdge(
         edgePaths,
         edgeWithPath,

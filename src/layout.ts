@@ -9,18 +9,28 @@
  * of 2R·sin(gπ/n), which must cover the two footprints plus spacing,
  * so R is the maximum of that requirement over all pairs.
  *
- * A neighbor edge is a true arc of that same circle — from the exact
- * angle where the circle leaves the source box's border to the exact
- * angle where it enters the target's, so the eye reads one ring, not
- * n separate curves, and every arrowhead sits on the border rotated
- * along the rim's own tangent. Paths start and end exactly on
- * borders — mermaid is told to skip its own boundary trimming.
+ * A neighbor edge is a true arc of that same circle, so the eye reads
+ * one ring, not n separate curves. Every path is sampled center to
+ * center, then trimmed to the exact silhouette crossings — bisected
+ * on the curve itself, shape-aware — with straight ≥10px terminal
+ * segments outside mermaid's marker-meddling window, so each
+ * arrowhead sits flush on the outline it points into, rotated along
+ * the curve's own trajectory. Mermaid is told to skip its own
+ * boundary trimming, which cuts toward interior samples and would
+ * bury what the layout just seated.
  */
 
 export interface LayoutNodeInput {
   id: string;
   width: number;
   height: number;
+  /** Geometric family of the node's rendered silhouette. Spacing and
+   *  border crossings measure the true outline: an ellipse claims
+   *  less of the ring than its bounding box and a circle claims the
+   *  same amount from every seat; a diamond is its rhombus, a stadium
+   *  its capsule. Shapes without a closer family default to 'box',
+   *  which over-reserves and never overlaps. */
+  shape?: 'box' | 'ellipse' | 'diamond' | 'stadium';
   /** Subgraph membership. Members of one group are seated side by
    *  side on their ring, so a box drawn around them wraps one arc. */
   group?: string;
@@ -142,8 +152,41 @@ const mirrored = (result: CircularLayoutResult): CircularLayoutResult => {
   return result;
 };
 
-/** Half the diagonal: the safe radius of a box whatever its rotation. */
-const footprint = (n: LayoutNodeInput) => Math.hypot(n.width, n.height) / 2;
+/**
+ * Half-extent of a node's silhouette along a unit direction — the
+ * support function of its shape, the one geometric fact every spacing
+ * rule needs. A box resists |dx|·w/2 + |dy|·h/2; an ellipse
+ * √((dx·w/2)² + (dy·h/2)²), which for a circle is w/2 whatever the
+ * direction — a circle claims the same amount from every angle. A
+ * diamond is the box's dual, max instead of sum; a stadium is a
+ * segment thickened by a disc, so its supports add.
+ */
+const extent = (n: LayoutNodeInput, dir: Point): number => {
+  switch (n.shape) {
+    case 'ellipse':
+      return Math.hypot(dir.x * n.width, dir.y * n.height) / 2;
+    case 'diamond':
+      return Math.max((Math.abs(dir.x) * n.width) / 2, (Math.abs(dir.y) * n.height) / 2);
+    case 'stadium':
+      return (Math.abs(dir.x) * Math.max(0, n.width - n.height)) / 2 + n.height / 2;
+    default:
+      return (Math.abs(dir.x) * n.width + Math.abs(dir.y) * n.height) / 2;
+  }
+};
+
+/** The silhouette's largest half-extent over every direction: the
+ *  safe radius of the node whatever its orientation. */
+const footprint = (n: LayoutNodeInput) => {
+  switch (n.shape) {
+    case 'ellipse':
+    case 'diamond':
+      return Math.max(n.width, n.height) / 2;
+    case 'stadium':
+      return Math.max(n.width, n.height) / 2;
+    default:
+      return Math.hypot(n.width, n.height) / 2;
+  }
+};
 
 /** Room a subgraph box's wall claims beyond its member's border. */
 const GROUP_PAD = 16;
@@ -347,79 +390,91 @@ const shortWay = (a: number, b: number): number => {
 interface BoxAt extends Point {
   width: number;
   height: number;
+  shape?: LayoutNodeInput['shape'];
 }
 
-/**
- * The middle of the side facing the target — used for the petal's
- * outward side, where only the side matters.
- */
-const sideAnchor = (b: BoxAt, target: Point): Point => {
-  const dx = target.x - b.x;
-  const dy = target.y - b.y;
-  const exitsVertical = Math.abs(dx) * b.height >= Math.abs(dy) * b.width;
-  return exitsVertical
-    ? { x: b.x + Math.sign(dx || 1) * (b.width / 2), y: b.y }
-    : { x: b.x, y: b.y + Math.sign(dy || 1) * (b.height / 2) };
-};
-
-/**
- * Where the ray from the box center toward the target crosses the
- * border — the spot a hand starts an arrow from. Rays toward a
- * lateral target cross mid-edge; only a genuinely diagonal target
- * approaches a corner, which is then honestly where the arrow goes.
- */
-const rayAnchor = (b: BoxAt, target: Point): Point => {
-  const dx = target.x - b.x;
-  const dy = target.y - b.y;
-  const t = Math.min(
-    dx === 0 ? Infinity : b.width / 2 / Math.abs(dx),
-    dy === 0 ? Infinity : b.height / 2 / Math.abs(dy)
-  );
-  if (!Number.isFinite(t)) {
-    return { x: b.x, y: b.y + b.height / 2 };
-  }
-  return { x: b.x + dx * t, y: b.y + dy * t };
-};
-
-const insideBox = (p: Point, b: BoxAt): boolean =>
-  Math.abs(p.x - b.x) < b.width / 2 && Math.abs(p.y - b.y) < b.height / 2;
-
-/**
- * The angle at which the circle of `radius` crosses the border of a
- * box whose center sits on it — walking from the center's angle
- * toward `limit`. Circle and box are both convex, so the crossing is
- * unique; a coarse walk brackets it and bisection sharpens it. Falls
- * back to `limit` when the walk never leaves the box (a box so large
- * it swallows its whole gap — the radius solver prevents this, but a
- * fallback beats a lie).
- */
-const rimCrossing = (radius: number, b: BoxAt, from: number, limit: number): number => {
-  const steps = 32;
-  let inside = from;
-  let outside: number | undefined;
-  for (let i = 1; i <= steps; i++) {
-    const angle = from + ((limit - from) * i) / steps;
-    if (insideBox(onCircle(radius, angle), b)) {
-      inside = angle;
-    } else {
-      outside = angle;
-      break;
+/** Whether a point lies strictly inside the node's silhouette,
+ *  inflated by `pad` pixels of margin on every side. */
+const insideNode = (p: Point, b: BoxAt, pad = 0): boolean => {
+  const dx = Math.abs(p.x - b.x);
+  const dy = Math.abs(p.y - b.y);
+  const hw = b.width / 2 + pad;
+  const hh = b.height / 2 + pad;
+  switch (b.shape) {
+    case 'ellipse':
+      return (dx * dx) / (hw * hw) + (dy * dy) / (hh * hh) < 1;
+    case 'diamond':
+      return dx / hw + dy / hh < 1;
+    case 'stadium': {
+      // A capsule: a core segment thickened by half-height discs.
+      const core = Math.max(0, b.width / 2 - b.height / 2);
+      const r = b.height / 2 + pad;
+      const reach = Math.max(0, dx - core);
+      return reach * reach + dy * dy < r * r;
     }
+    default:
+      return dx < hw && dy < hh;
   }
-  if (outside === undefined) {
-    return limit;
-  }
-  let lo = inside;
-  let hi: number = outside;
-  for (let i = 0; i < 40; i++) {
-    const probe = (lo + hi) / 2;
-    if (insideBox(onCircle(radius, probe), b)) {
-      lo = probe;
+};
+
+/** The exact silhouette crossing on the segment from an inside point
+ *  to an outside point, by bisection — one routine for every convex
+ *  shape the silhouette test knows. */
+const borderCrossing = (insidePt: Point, outsidePt: Point, b: BoxAt): Point => {
+  let lo = insidePt;
+  let hi = outsidePt;
+  for (let i = 0; i < 24; i++) {
+    const mid = { x: (lo.x + hi.x) / 2, y: (lo.y + hi.y) / 2 };
+    if (insideNode(mid, b)) {
+      lo = mid;
     } else {
-      hi = probe;
+      hi = mid;
     }
   }
   return hi;
+};
+
+/** How far a path end must stay clean: mermaid's marker machinery
+ *  displaces points within ~5px of an end, so the terminal segment
+ *  must outreach that window or the arrowhead rotates along a kink. */
+const TAIL = 10;
+
+/**
+ * Trim a sampled curve to the true silhouettes: the path begins and
+ * ends exactly on the rendered outline — the crossing bisected on the
+ * curve itself, shape-aware — and the samples adjacent to each end
+ * keep a straight ≥10px terminal segment laid along the curve, out of
+ * reach of mermaid's end-of-path marker meddling. The curve is
+ * sampled from center to center, so the crossing always exists and
+ * the arrowhead's axis is the curve's own trajectory at the border.
+ */
+const throughBorders = (points: Point[], from: BoxAt, to: BoxAt): Point[] => {
+  const interior = points.filter((p) => !insideNode(p, from, TAIL) && !insideNode(p, to, TAIL));
+  if (interior.length === 0) {
+    // Silhouettes so close the whole curve is swallowed: fall back to
+    // the middle sample so the path still has a direction.
+    interior.push(points[Math.floor(points.length / 2)]!);
+  }
+  // The crossings are bisected between consecutive samples — a few
+  // pixels of bracket on the true curve — so the endpoint sits where
+  // the curve itself pierces the silhouette.
+  let start = points[0]!;
+  if (insideNode(start, from)) {
+    let k = 1;
+    while (k < points.length && insideNode(points[k]!, from)) {
+      k++;
+    }
+    start = k < points.length ? borderCrossing(points[k - 1]!, points[k]!, from) : interior[0]!;
+  }
+  let end = points[points.length - 1]!;
+  if (insideNode(end, to)) {
+    let k = points.length - 2;
+    while (k >= 0 && insideNode(points[k]!, to)) {
+      k--;
+    }
+    end = k >= 0 ? borderCrossing(points[k + 1]!, points[k]!, to) : interior[interior.length - 1]!;
+  }
+  return [start, ...interior, end];
 };
 
 const unit = (v: Point): Point => {
@@ -427,40 +482,13 @@ const unit = (v: Point): Point => {
   return { x: v.x / len, y: v.y / len };
 };
 
-/**
- * Straighten both ends of a sampled curve into explicit 10px tails
- * laid along the given end tangents. The arrowhead's line of symmetry
- * is the final path segment's direction, and mermaid displaces points
- * within ~5px of an end — a straight tail longer than that window
- * makes the marker's axis the curve's true trajectory by
- * construction.
- */
-const withTails = (points: Point[], d0: Point, d1: Point, tail: number): Point[] => {
-  const first = points[0]!;
-  const second = points[1]!;
-  const last = points[points.length - 1]!;
-  const penult = points[points.length - 2]!;
-  // A tail longer than the gap to its neighboring sample would
-  // overshoot it and double the path back on itself. The control
-  // polygon overestimates curve length, so clamp against the real
-  // sampled spacing.
-  const startTail = Math.min(tail, 0.9 * Math.hypot(second.x - first.x, second.y - first.y));
-  const endTail = Math.min(tail, 0.9 * Math.hypot(last.x - penult.x, last.y - penult.y));
-  return [
-    first,
-    { x: first.x + d0.x * startTail, y: first.y + d0.y * startTail },
-    ...points.slice(1, -1),
-    { x: last.x - d1.x * endTail, y: last.y - d1.y * endTail },
-    last,
-  ];
-};
-
-/** Samples for a curve of the given approximate length: ~13px
- *  segments, so no interior point falls in mermaid's end windows. */
+/** Samples for a curve of the given approximate length: ~10px
+ *  segments, dense enough that the basis spline the renderer fits
+ *  reads as the curve itself, floored so short paths keep shape. */
 const densityOf = (length: number, cap: number) =>
-  Math.max(3, Math.min(cap, Math.round(length / 13)));
+  Math.max(8, Math.min(cap, Math.round(length / 10)));
 
-/** A quadratic Bézier, sparsely sampled, with straight tangent tails. */
+/** A quadratic Bézier, sampled evenly. */
 const quadratic = (p0: Point, c: Point, p3: Point, cap: number): Point[] => {
   const approxLength = Math.hypot(c.x - p0.x, c.y - p0.y) + Math.hypot(p3.x - c.x, p3.y - c.y);
   const samples = densityOf(approxLength, cap);
@@ -473,16 +501,10 @@ const quadratic = (p0: Point, c: Point, p3: Point, cap: number): Point[] => {
       y: u * u * p0.y + 2 * u * t * c.y + t * t * p3.y,
     });
   }
-  const tail = Math.min(10, approxLength / 4);
-  return withTails(
-    points,
-    unit({ x: c.x - p0.x, y: c.y - p0.y }),
-    unit({ x: p3.x - c.x, y: p3.y - c.y }),
-    tail
-  );
+  return points;
 };
 
-/** A cubic Bézier, sparsely sampled, with straight tangent tails. */
+/** A cubic Bézier, sampled evenly. */
 const cubic = (p0: Point, c1: Point, c2: Point, p3: Point, cap: number): Point[] => {
   const approxLength =
     Math.hypot(c1.x - p0.x, c1.y - p0.y) +
@@ -498,29 +520,18 @@ const cubic = (p0: Point, c1: Point, c2: Point, p3: Point, cap: number): Point[]
       y: u * u * u * p0.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * p3.y,
     });
   }
-  const tail = Math.min(10, approxLength / 5);
-  return withTails(
-    points,
-    unit({ x: c1.x - p0.x, y: c1.y - p0.y }),
-    unit({ x: p3.x - c2.x, y: p3.y - c2.y }),
-    tail
-  );
+  return points;
 };
 
-/** Half-extent of a box along the rim's tangent at the given angle:
- *  what the box actually claims of the circle, which depends on its
- *  orientation — a wide box claims much at 12 o'clock and little at
- *  3 o'clock, because only the tangential dimension counts. */
+/** What the node claims of the circle at its seat: its extent along
+ *  the rim's tangent there. A wide box claims much at 12 o'clock and
+ *  little at 3 o'clock; a circle claims the same everywhere. */
 const tangentialExtent = (node: LayoutNodeInput, angle: number): number =>
-  (Math.abs(Math.sin(angle)) * node.width) / 2 + (Math.abs(Math.cos(angle)) * node.height) / 2;
+  extent(node, { x: -Math.sin(angle), y: Math.cos(angle) });
 
-/** Half-extent of a box along the radial direction at the given angle. */
+/** The node's extent along the radial direction at the given angle. */
 const radialExtent = (node: LayoutNodeInput, angle: number): number =>
-  (Math.abs(Math.cos(angle)) * node.width) / 2 + (Math.abs(Math.sin(angle)) * node.height) / 2;
-
-/** Half-extent of a box along an arbitrary unit direction. */
-const supportExtent = (node: LayoutNodeInput, dir: Point): number =>
-  (Math.abs(dir.x) * node.width) / 2 + (Math.abs(dir.y) * node.height) / 2;
+  extent(node, { x: Math.cos(angle), y: Math.sin(angle) });
 
 /**
  * Separate the ring from what hangs off it. Repeatedly removing
@@ -849,19 +860,23 @@ const layoutRing = (
   if (nodes.length === 1) {
     const only = nodes[0]!;
     const reach = footprint(only) + spacing;
+    const home: BoxAt = { x: 0, y: 0, width: only.width, height: only.height, shape: only.shape };
     return {
       nodes: [{ id: only.id, x: 0, y: 0, angle: 0 }],
       edges: edges.map((e) => {
         if (e.start !== only.id || e.end !== only.id) {
           return { ...e, points: [], onRim: false };
         }
-        // A self-loop on a lone node: a petal reaching upward from
-        // the top edge, the same gesture as on a ring.
+        // A self-loop on a lone node: a petal reaching upward, the
+        // same gesture as on a ring, anchored by mermaid on the border.
         const t1 = { x: -reach * Math.sin(0.45), y: -reach * Math.cos(0.45) };
         const t2 = { x: reach * Math.sin(0.45), y: -reach * Math.cos(0.45) };
-        const p0 = { x: -only.width / 4, y: -only.height / 2 };
-        const p3 = { x: only.width / 4, y: -only.height / 2 };
-        return { ...e, points: cubic(p0, t1, t2, p3, samples), onRim: false };
+        const origin = { x: 0, y: 0 };
+        return {
+          ...e,
+          points: throughBorders(cubic(origin, t1, t2, origin, samples), home, home),
+          onRim: false,
+        };
       }),
       order: [only.id],
       radius: 0,
@@ -1208,8 +1223,8 @@ const layoutRing = (
         const stepGap = Math.min(j - i, nRim - (j - i));
         const margin = stepGap === 1 ? 2 : spacing / 2;
         const need =
-          supportExtent(byId.get(order[i]!)!, dir) +
-          supportExtent(byId.get(order[j]!)!, dir) +
+          extent(byId.get(order[i]!)!, dir) +
+          extent(byId.get(order[j]!)!, dir) +
           margin;
         if (between < need) {
           scale = Math.max(scale, need / Math.max(between, 1));
@@ -1223,7 +1238,7 @@ const layoutRing = (
       for (let i = 0; i < nRim; i++) {
         const dir = unit(onCircle(radius, angles[i]!));
         const need =
-          supportExtent(byId.get(order[i]!)!, dir) + supportExtent(hubNode, dir) + spacing;
+          extent(byId.get(order[i]!)!, dir) + extent(hubNode, dir) + spacing;
         if (radius < need) {
           scale = Math.max(scale, need / Math.max(radius, 1));
         }
@@ -1355,7 +1370,7 @@ const layoutRing = (
   const boxAt = (id: string): BoxAt => {
     const node = byId.get(id)!;
     const pos = posOf.get(id)!;
-    return { ...pos, width: node.width, height: node.height };
+    return { ...pos, width: node.width, height: node.height, shape: node.shape };
   };
 
   const position = new Map(order.map((id, i) => [id, i]));
@@ -1396,16 +1411,11 @@ const layoutRing = (
       const reach = footprint(byId.get(e.start)!) + spacing;
       const t1 = onCircle(homeRadius + reach, homeAngle - 0.45);
       const t2 = onCircle(homeRadius + reach, homeAngle + 0.45);
-      const outwardSide = sideAnchor(home, {
-        x: pStart.x * 2 || Math.cos(homeAngle),
-        y: pStart.y * 2 || Math.sin(homeAngle),
-      });
-      const alongX = outwardSide.y === home.y ? 0 : 1;
-      const flank = (sign: number): Point =>
-        alongX === 0
-          ? { x: outwardSide.x, y: home.y + (sign * home.height) / 4 }
-          : { x: home.x + (sign * home.width) / 4, y: outwardSide.y };
-      return { ...e, points: cubic(flank(-1), t1, t2, flank(1), samples), onRim: false };
+      return {
+        ...e,
+        points: throughBorders(cubic(pStart, t1, t2, pStart, samples), home, home),
+        onRim: false,
+      };
     }
 
     const key = pairKeyOf(e);
@@ -1417,14 +1427,21 @@ const layoutRing = (
     const bothOnRim = position.has(e.start) && position.has(e.end);
 
     if (!bothOnRim) {
-      // A spur edge: essentially radial, drawn straight from border
-      // to border. Siblings bow apart sideways.
-      const from = rayAnchor(boxAt(e.start), pEnd);
-      const to = rayAnchor(boxAt(e.end), pStart);
-      const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
-      const across = unit({ x: to.y - from.y, y: -(to.x - from.x) });
+      // A spur edge: essentially radial, drawn straight from center
+      // to center and trimmed to the borders by the renderer.
+      // Siblings bow apart sideways.
+      const mid = { x: (pStart.x + pEnd.x) / 2, y: (pStart.y + pEnd.y) / 2 };
+      const across = unit({ x: pEnd.y - pStart.y, y: -(pEnd.x - pStart.x) });
       const control = { x: mid.x + across.x * spread * 18, y: mid.y + across.y * spread * 18 };
-      return { ...e, points: quadratic(from, control, to, samples), onRim: false };
+      return {
+        ...e,
+        points: throughBorders(
+          quadratic(pStart, control, pEnd, samples),
+          boxAt(e.start),
+          boxAt(e.end)
+        ),
+        onRim: false,
+      };
     }
 
     const a = angleOf.get(e.start)!;
@@ -1434,11 +1451,12 @@ const layoutRing = (
 
     if (neighbors) {
       // One circle, drawn honestly: the edge is a true arc of the
-      // rim, from the exact angle where the circle leaves the source
-      // box's border to the exact angle where it enters the target's.
+      // rim, sampled from seat angle to seat angle — both seats lie
+      // on the rim, so the path runs center to center and the
+      // renderer replaces each center with the exact border crossing.
       // A sibling pair (opposite or parallel arrows) rides concentric
       // arcs — the offset clamped so the offset circle still passes
-      // through both boxes.
+      // through both silhouettes.
       const boxA = boxAt(e.start);
       const boxB = boxAt(e.end);
       const maxOffset =
@@ -1449,52 +1467,20 @@ const layoutRing = (
       const fanScale = widestSpread > maxOffset ? maxOffset / widestSpread : 1;
       const offset = spread * 24 * fanScale;
       const arcRadius = radius + offset;
-      const delta = shortWay(a, b);
-      const midAngle = a + delta / 2;
       // The target's angle expressed continuously from `a` — walking
       // back from its stored angle can sit across the ±π wrap and
       // send the arc the long way round the circle.
-      const bUnwrapped = a + delta;
-      const exit = rimCrossing(arcRadius, boxA, a, midAngle);
-      const entry = rimCrossing(arcRadius, boxB, bUnwrapped, midAngle);
-
-      // The marker's line of symmetry is the direction of the path's
-      // final segment, and mermaid displaces any point within ~5px of
-      // an end. Both ends therefore get a straight 10px tail laid
-      // exactly along the rim's tangent at the crossing — the
-      // arrowhead's axis IS the trajectory, by construction — and the
-      // interior is sampled sparsely (~13px segments; the sagitta of
-      // a 13px chord on these radii is a fraction of a pixel).
-      const sweep = entry - exit;
-      const arcLength = Math.abs(sweep) * arcRadius;
-      const tail = Math.min(10, arcLength / 3);
-      const tangentAt = (angle: number, sign: number): Point => ({
-        x: -Math.sin(angle) * sign,
-        y: Math.cos(angle) * sign,
-      });
-      const sign = Math.sign(sweep) || 1;
-      const startPt = onCircle(arcRadius, exit);
-      const endPt = onCircle(arcRadius, entry);
-      const startTangent = tangentAt(exit, sign);
-      const endTangent = tangentAt(entry, sign);
-      const tailAngle = tail / arcRadius;
-      const innerFrom = exit + sign * tailAngle;
-      const innerTo = entry - sign * tailAngle;
-      const innerSamples = Math.max(2, Math.min(samples, Math.round(arcLength / 13)));
-      const points: Point[] = [
-        startPt,
-        { x: startPt.x + startTangent.x * tail, y: startPt.y + startTangent.y * tail },
-      ];
-      if ((innerTo - innerFrom) * sign > 0) {
-        for (let i = 0; i <= innerSamples; i++) {
-          points.push(onCircle(arcRadius, innerFrom + ((innerTo - innerFrom) * i) / innerSamples));
-        }
+      const delta = shortWay(a, b);
+      const arcLength = Math.abs(delta) * arcRadius;
+      // Denser than the free-curve samplers: the arc's ends feed the
+      // renderer its border directions, and a fine step keeps those
+      // directions honest tangents.
+      const count = Math.max(8, Math.min(4 * samples, Math.round(arcLength / 8)));
+      const arc: Point[] = [];
+      for (let i = 0; i <= count; i++) {
+        arc.push(onCircle(arcRadius, a + (delta * i) / count));
       }
-      points.push(
-        { x: endPt.x - endTangent.x * tail, y: endPt.y - endTangent.y * tail },
-        endPt
-      );
-      return { ...e, points, onRim: true };
+      return { ...e, points: throughBorders(arc, boxA, boxB), onRim: true };
     }
 
     // A chord: bowed toward the center, swerved left of travel by how
@@ -1514,9 +1500,15 @@ const layoutRing = (
       x: mid.x * (1 - (bow + spread * 0.15)) + left.x * slide,
       y: mid.y * (1 - (bow + spread * 0.15)) + left.y * slide,
     };
-    const from = rayAnchor(boxAt(e.start), control);
-    const to = rayAnchor(boxAt(e.end), control);
-    return { ...e, points: quadratic(from, control, to, samples), onRim: false };
+    return {
+      ...e,
+      points: throughBorders(
+        quadratic(pa, control, pb, samples),
+        boxAt(e.start),
+        boxAt(e.end)
+      ),
+      onRim: false,
+    };
   });
 
   return {

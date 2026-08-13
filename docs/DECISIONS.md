@@ -189,3 +189,24 @@ update the README beside it.
   against the true silhouette in one bisection routine, and
   rimCrossing, rayAnchor, sideAnchor, insideBox, withTails and both
   tail constructions are gone.
+- **2026-08-13 — Labels claim radial room; a pendant pair is a
+  circle.** Three faults found working the labeled-elements cases.
+  First, spur gaps never asked about labels — the rim's
+  labeledGapNeed lesson, never applied radially. A labeled spur (or
+  hub spoke, or satellite bridge) now widens its gap to the label's
+  projection onto the spur direction plus breathing room, which is
+  why LayoutEdgeInput grew labelHeight. Second, opposite spur
+  siblings drew as ONE line: the sideways spread lived in each
+  edge's own travel frame, and an opposite pair's perpendiculars
+  cancel exactly. The spread now lives in the canonical frame of
+  the sorted pair, like the rim fan's radial offset always did.
+  Third, a pendant two-cycle (Earth ⇄ Lava off a ring) flattened
+  into that collapsed spur, because blocksOf sees the undirected
+  simple graph and a double edge collapses to one adjacency. The
+  satellite extraction now runs whenever the 2-core has any block
+  and admits a component hanging from one anchor by two or more
+  edges — a cycle the peel cannot see — so the pair renders as the
+  same tangent lens it earns standalone, labels widening it as on
+  any rim. Known corner left open: a pendant lens hanging off a
+  spur node (not a ring member) still flattens, though its two
+  curves now at least separate.

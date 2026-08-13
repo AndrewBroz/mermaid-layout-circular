@@ -330,6 +330,112 @@ describe('spurs', () => {
   });
 });
 
+describe('labeled spurs', () => {
+  it('widens a spur gap to hold its label', () => {
+    const ids = ['Earth', 'Fire', 'Water'];
+    const { nodes } = circularLayout(
+      [...ids, 'Lava', 'Plasma', 'Vapor'].map((id) => box(id, 70, 40)),
+      [
+        ...cycle(...ids),
+        { id: 'l1', start: 'Earth', end: 'Lava', labelWidth: 120, labelHeight: 24 },
+        { id: 'l2', start: 'Fire', end: 'Plasma', labelWidth: 90, labelHeight: 24 },
+        { id: 'l3', start: 'Water', end: 'Vapor', labelWidth: 80, labelHeight: 24 },
+      ]
+    );
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    for (const [parent, kid, w] of [
+      ['Earth', 'Lava', 120],
+      ['Fire', 'Plasma', 90],
+      ['Water', 'Vapor', 80],
+    ] as const) {
+      const p = byId.get(parent)!;
+      const q = byId.get(kid)!;
+      // Daylight between the two borders along the spur direction
+      // must hold the label's projection onto that direction, plus
+      // breathing room.
+      const d = dist(p, q);
+      const dir = { x: (q.x - p.x) / d, y: (q.y - p.y) / d };
+      const borders =
+        (Math.abs(dir.x) * 70 + Math.abs(dir.y) * 40) / 2 +
+        (Math.abs(dir.x) * 70 + Math.abs(dir.y) * 40) / 2;
+      const need = Math.abs(dir.x) * w + Math.abs(dir.y) * 24 + 24;
+      expect(d - borders, `${parent}->${kid} daylight`).toBeGreaterThanOrEqual(need - 1e-6);
+    }
+  });
+
+  it('separates opposite spur siblings into distinct curves', () => {
+    // Two spokes between the hub and one ring member must not draw
+    // as one line: the sideways spread has to live in a canonical
+    // pair frame, not each edge's own travel frame.
+    const spokes = ['A', 'B', 'C', 'D', 'E', 'F'];
+    const { edges, nodes } = circularLayout(
+      ['Hub', ...spokes].map((id) => box(id)),
+      [...spokes.map((id) => edge('Hub', id)), { id: 'back', start: 'A', end: 'Hub' }]
+    );
+    const a = nodes.find((n) => n.id === 'A')!;
+    const axis = unit({ x: a.x, y: a.y });
+    // Signed sideways offset of a path's midpoint from the Hub–A axis.
+    const sideOf = (e: (typeof edges)[number]) => {
+      const mid = e.points[Math.floor(e.points.length / 2)]!;
+      return mid.x * -axis.y + mid.y * axis.x;
+    };
+    const there = sideOf(edges.find((e) => e.id === 'Hub-A')!);
+    const back = sideOf(edges.find((e) => e.id === 'back')!);
+    expect(Math.abs(there - back)).toBeGreaterThan(8);
+    expect(there * back, 'the two spokes bow to opposite sides').toBeLessThan(0);
+  });
+});
+
+const unit = (v: { x: number; y: number }) => {
+  const len = Math.hypot(v.x, v.y) || 1;
+  return { x: v.x / len, y: v.y / len };
+};
+
+describe('pendant two-cycles', () => {
+  const ring = ['Earth', 'Fire', 'Water'];
+  const pendant = [
+    ...cycle(...ring),
+    edge('Earth', 'Lava'),
+    { id: 'back', start: 'Lava', end: 'Earth' },
+  ];
+
+  it('draws a pendant two-cycle as a tangent satellite lens, not a flattened spur', () => {
+    const { satellites, order, nodes, radius } = circularLayout(
+      [...ring, 'Lava'].map((id) => box(id)),
+      pendant
+    );
+    expect(new Set(order)).toEqual(new Set(ring));
+    expect(satellites).toHaveLength(1);
+    const sat = satellites![0]!;
+    expect(sat.anchor).toBe('Earth');
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const earth = byId.get('Earth')!;
+    const lava = byId.get('Lava')!;
+    // Both nodes ride the lens circle; Lava sits outside the main ring.
+    expect(dist(earth, sat.center)).toBeCloseTo(sat.radius, 4);
+    expect(dist(lava, sat.center)).toBeCloseTo(sat.radius, 4);
+    expect(Math.hypot(lava.x, lava.y)).toBeGreaterThan(radius);
+  });
+
+  it('keeps the two lens arcs apart, one on each side', () => {
+    const { edges } = circularLayout([...ring, 'Lava'].map((id) => box(id)), pendant);
+    const midOf = (e: (typeof edges)[number]) => e.points[Math.floor(e.points.length / 2)]!;
+    const there = midOf(edges.find((e) => e.id === 'Earth-Lava')!);
+    const back = midOf(edges.find((e) => e.id === 'back')!);
+    expect(dist(there, back)).toBeGreaterThan(20);
+  });
+
+  it('leaves a single pendant edge alone: still a plain spur', () => {
+    const { satellites, nodes, radius } = circularLayout(
+      [...ring, 'Lava'].map((id) => box(id)),
+      [...cycle(...ring), edge('Earth', 'Lava')]
+    );
+    expect(satellites ?? []).toHaveLength(0);
+    const lava = nodes.find((n) => n.id === 'Lava')!;
+    expect(Math.hypot(lava.x, lava.y)).toBeGreaterThan(radius);
+  });
+});
+
 describe('option hygiene', () => {
   it('ignores an explicitly undefined option instead of clobbering the default', () => {
     const { radius, nodes } = circularLayout(

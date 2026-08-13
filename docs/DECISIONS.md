@@ -159,3 +159,33 @@ update the README beside it.
   `InternalHelpers` deprecated for external use. elk and tidy-tree
   ship on it anyway; so does this. The demo is the canary on
   upgrades.
+- **2026-08-13 — The node is not its box; the border is mermaid's.**
+  Circle nodes exposed the root fault: every geometric predicate
+  modeled the node as its bounding rectangle, and `skipIntersect`
+  kept mermaid from correcting it. Arrows stopped on invisible box
+  corners (measured: up to r·(√2−1), 21px on a 105px circle — the
+  bound exactly saturated), small arcs were mostly tail-workaround
+  (8-10 points, four of them endpoint/tail pairs, through a basis
+  spline), and half-diagonal footprints inflated rings 41% and split
+  a satellite anchor's gaps 324/77/332. Both fixes are deletions.
+  Spacing: the four extent helpers collapse into one support
+  function, `extent(node, dir)`, with families for ellipse, diamond
+  and stadium — a circle claims the same amount from every seat, so
+  equal circles seat at exactly equal angles. Routing: every path is
+  sampled center to center, then trimmed by ONE generic mechanism —
+  `insideNode` (the silhouette test, per family) finds the crossing
+  by bisection between consecutive samples, and an inflated
+  silhouette (border + 10px) filters the interior so both terminal
+  segments outreach mermaid's marker-meddling window. skipIntersect
+  stays ON. Of record, because it was tried within the hour: handing
+  the cut to mermaid's own intersect (skipIntersect off,
+  center-terminated paths, dagre's contract) reproduced the buried,
+  rotated arrowheads on the author's first render — the renderer's
+  cut lands within a sample step of its neighbor and the marker
+  orients along the kink, exactly what the third review's tails were
+  built against. The two guarantees that survive every rewrite:
+  endpoints exactly on the silhouette, and ≥10px of straight path
+  before every marker. What changed is that both are now computed
+  against the true silhouette in one bisection routine, and
+  rimCrossing, rayAnchor, sideAnchor, insideBox, withTails and both
+  tail constructions are gone.

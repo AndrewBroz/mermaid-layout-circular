@@ -1,0 +1,39 @@
+name: release
+
+# Publishes to npm with provenance when a version tag is pushed.
+# One-time setup on npmjs.com: package settings → Trusted publisher →
+# GitHub Actions, repository AndrewBroz/mermaid-layout-circular,
+# workflow release.yml. No token needed after that — the id-token
+# permission below is the credential.
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+      # Idempotent: a tag whose version is already on the registry
+      # (the first release was published locally) skips cleanly
+      # instead of failing the run.
+      - run: |
+          PKG="$(npm pkg get name | tr -d '"')"
+          VER="$(npm pkg get version | tr -d '"')"
+          if npm view "$PKG@$VER" version > /dev/null 2>&1; then
+            echo "$PKG@$VER already published — skipping"
+          else
+            npm publish --provenance --access public
+          fi

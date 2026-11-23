@@ -342,9 +342,10 @@ The package renders through mermaid's `InternalHelpers`, which mermaid
 marks as deprecated for external use. The official layout engines (elk,
 tidy-tree) ship on the same seam, so the risk is shared, but a mermaid
 upgrade in a consuming project is the right moment to re-run the demo
-and look. The peer range is `mermaid ^11.12.0`, the earliest version
-verified to carry the internals this package relies on. Developed
-against 11.16.
+and look. The peer range is `mermaid >=11.12.0 <13`: 11.12.0 is the
+earliest version verified to carry the internals this package relies
+on, and 12.x keeps the same layout dispatch and helper surface.
+Developed against 12.3.
 
 One more limitation worth knowing: mermaid measures HTML edge labels
 with `getBoundingClientRect`, which reports screen pixels. If the

@@ -210,3 +210,12 @@ update the README beside it.
   any rim. Known corner left open: a pendant lens hanging off a
   spur node (not a ring member) still flattens, though its two
   curves now at least separate.
+- **2026-11-22 — Mermaid 12 joins the peer range.** The range widened
+  from `^11.12.0` to `>=11.12.0 <13`, and development moved to 12.3.0.
+  The `InternalHelpers` surface in 12.x differs from 11.16 only by two
+  new optional parameters (`insertEdge`'s `layoutAlgorithm`,
+  `labelHelper`'s `ignoreMinWidth`) that `src/render.ts` does not use,
+  and the `registerLayoutLoaders` dispatch is unchanged. Verified by
+  the three gates and by rendering the gallery and the bow and samples
+  trials against 12.3.0: every case drew, no NaN, no console errors.
+  The 11.12.0 floor stays.

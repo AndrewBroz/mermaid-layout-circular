@@ -263,7 +263,9 @@ Each edge between ring nodes is then a straight line from border to
 border, so a three-cycle reads as a triangle. Chords lose their bow,
 and two opposite edges become two parallel lines. Placement does not
 change. Only `linear` selects straight edges. Every other curve keeps
-the arcs. It works with `circular-ccw` too.
+the arcs. It works with `circular-ccw` too. A straight chord across a
+ring with a hub runs through the hub, where arcs would swerve around
+it.
 
 Subgraphs:
 

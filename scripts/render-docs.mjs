@@ -1,7 +1,8 @@
 // Redraws the README and gallery pictures in docs/media: each demo
 // case with a `doc` name, rendered by the repo's own mermaid in the
 // installed Chrome, at 2x, on a white card. Run with
-// `npm run docs:images`; pass `--only id,id` to redraw some of them.
+// `npm run docs:images`; pass `--only id,id` to redraw some of them,
+// and `--out <dir>` to write somewhere other than docs/media.
 import { createServer } from 'vite';
 import { chromium } from 'playwright-core';
 import { mkdir } from 'node:fs/promises';
@@ -9,9 +10,13 @@ import { resolve } from 'node:path';
 import { cases } from '../demo/cases.ts';
 
 const root = resolve(import.meta.dirname, '..');
-const out = resolve(root, 'docs/media');
-const onlyArg = process.argv.indexOf('--only');
-const only = onlyArg === -1 ? undefined : new Set(process.argv[onlyArg + 1].split(','));
+const arg = (name) => {
+  const i = process.argv.indexOf(name);
+  return i === -1 ? undefined : process.argv[i + 1];
+};
+const out = resolve(arg('--out') ?? resolve(root, 'docs/media'));
+const onlyList = arg('--only');
+const only = onlyList === undefined ? undefined : new Set(onlyList.split(','));
 const docs = cases
   .map((c) => c.doc)
   .filter((doc) => doc !== undefined && (!only || only.has(doc)));

@@ -1,10 +1,18 @@
 # Gallery
 
-These pictures are drawn by [mermaid](https://mermaid.js.org), a tool that turns text into diagrams, with this package's circular layout. Each one shows the diagram text that made it. Set `layout: circular` in the frontmatter, the settings block between the two `---` lines, to get this layout.
+These pictures are drawn by [mermaid](https://mermaid.js.org), a tool
+that turns text into diagrams, with this package's circular layout.
+Each one shows the diagram text that made it. Set `layout: circular` in
+the frontmatter, the settings block between the two `---` lines, to get
+this layout.
 
-The ring is the circle the nodes sit on. The same diagrams drawn by Pele, another renderer for mermaid text, are in [pele-layout-circular's gallery](https://github.com/AndrewBroz/pele-layout-circular/blob/main/docs/GALLERY.md).
+The ring is the circle the nodes sit on. The same diagrams drawn by
+Pele, a smaller program that draws diagrams from the same text, are in
+[pele-layout-circular's gallery](https://github.com/AndrewBroz/pele-layout-circular/blob/main/docs/GALLERY.md).
 
-The pictures are redrawn by `npm run docs:images`. The [live gallery](https://andrewbroz.github.io/mermaid-layout-circular/) draws them in your browser.
+The pictures are redrawn by `npm run docs:images`. The
+[live gallery](https://andrewbroz.github.io/mermaid-layout-circular/)
+draws them in your browser.
 
 ## Shapes
 
@@ -28,9 +36,9 @@ flowchart LR
 
 ### A hub
 
-A hub is one node linked to most of the others. The layout puts it in the middle. Bravo's log hangs off Bravo as a branch.
+A hub is one node linked to most of the others. The layout puts it in the middle. Here Registry links to three nodes, and nothing else links them.
 
-<img src="media/hub.png" width="640" alt="Registry in the middle with arrows out to five boxes around it, and Bravo's log hanging off Bravo.">
+<img src="media/hub.png" width="552" alt="Registry in the middle, with arrows out to Alpha above and to Bravo and Charlie below.">
 
 ```
 ---
@@ -41,16 +49,13 @@ flowchart LR
   Hub[Registry] --> A[Alpha]
   Hub --> B[Bravo]
   Hub --> C[Charlie]
-  Hub --> D[Delta]
-  Hub --> E[Echo]
-  B --> L[Bravo's log]
 ```
 
 ### A wheel
 
 A wheel is a ring with a hub. Every ring node links to Vision, so Vision goes in the middle and each link is a straight spoke.
 
-<img src="media/wheel.png" width="567" alt="Six boxes on a ring from Plan to Learn, each with a straight arrow to Vision in the middle.">
+<img src="media/wheel.png" width="598" alt="Five boxes on a ring from Plan to Learn, each with a straight arrow to Vision in the middle.">
 
 ```
 ---
@@ -58,20 +63,19 @@ config:
   layout: circular
 ---
 flowchart LR
-  A[Plan] --> B[Build] --> C[Test] --> D[Ship] --> E[Watch] --> F[Learn] --> A
-  A --> Hub[Vision]
-  B --> Hub
-  C --> Hub
-  D --> Hub
-  E --> Hub
-  F --> Hub
+  A[Plan] --> B[Build] --> C[Test] --> D[Ship] --> E[Learn] --> A
+  A --> V[Vision]
+  B --> V
+  C --> V
+  D --> V
+  E --> V
 ```
 
 ### A satellite
 
-A satellite is a second, smaller cycle hanging off the ring. It gets its own circle, beyond the node it hangs from.
+A satellite is a second, smaller cycle hanging off the ring. It gets its own circle, beyond the node it hangs from. The text starts with Build, so Build sits at the top and the satellite rises above it.
 
-<img src="media/satellite.png" width="640" alt="A four-box ring, and beyond Build a smaller circle of Debug, Fix and Test.">
+<img src="media/satellite.png" width="456" alt="Build, Ship, Learn and Plan on a ring. Above Build, Debug, Fix and Test make a smaller circle.">
 
 ```
 ---
@@ -79,16 +83,16 @@ config:
   layout: circular
 ---
 flowchart LR
-  P[Plan] --> B[Build] --> S[Ship] --> L[Learn] --> P
+  B[Build] --> S[Ship] --> L[Learn] --> P[Plan] --> B
   B --> D[Debug]
   D --> F[Fix] --> T[Test] --> D
 ```
 
 ### A figure-eight
 
-Two cycles that share one node make a figure-eight. The smaller circle runs the other way round from the main ring, as a textbook would draw it.
+Two cycles that share one node make a figure-eight. The smaller circle runs the other way round from the main ring, as a textbook would draw it. The text starts with Sleep, so the two circles stack.
 
-<img src="media/figure-eight.png" width="636" alt="Two circles meeting at Sleep: Wake, Work and Dine on the right, Dream and Toss on the left.">
+<img src="media/figure-eight.png" width="458" alt="Two circles stacked at Sleep: Wake, Work and Dine below, Dream and Toss above.">
 
 ```
 ---
@@ -96,11 +100,11 @@ config:
   layout: circular
 ---
 flowchart LR
-  W[Wake] --> K[Work] --> N[Dine] --> S[Sleep] --> W
+  S[Sleep] --> W[Wake] --> K[Work] --> N[Dine] --> S
   S --> R[Dream] --> T[Toss] --> S
 ```
 
-### Three gears
+### Three linked cycles
 
 Cycles can link in a chain. Each circle runs the other way round from the one it touches, like gears.
 
@@ -119,7 +123,7 @@ flowchart LR
   H --> I[Melt] --> F
 ```
 
-### A large cycle with inputs and outputs
+### A larger cycle with branches
 
 Eight nodes on the ring, with one input and three outputs as branches.
 
@@ -139,7 +143,7 @@ flowchart LR
   G --> NADH
 ```
 
-### A wheel with gaps
+### A hub with gaps
 
 The ring here is missing an arc between Water and Wind. Captain Planet links to every ring node, so it still goes in the middle. Vapor and Ice form a satellite off Water. The `<-->` arrows point both ways.
 
@@ -192,7 +196,7 @@ flowchart LR
 
 A subgraph (a group of nodes) keeps its members next to each other on the circle. A small group is drawn as a tight box. The circle turns, if needed, so the box clears every other node.
 
-<img src="media/lifecycle-box.png" width="640" alt="Eight boxes on a circle. Build and Test sit inside a grey box titled Make, at the bottom right.">
+<img src="media/lifecycle-box.png" width="485" alt="Five boxes on a circle. Build and Test sit inside a gray box titled Make, at the bottom.">
 
 ```
 ---
@@ -200,19 +204,19 @@ config:
   layout: circular
 ---
 flowchart LR
-  I[Idea] --> S[Spec] --> D[Design]
+  I[Idea] --> S[Spec]
   subgraph Make
     B[Build]
     T[Test]
   end
-  D --> B --> T --> P[Deploy] --> M[Monitor] --> R[Retire] --> I
+  S --> B --> T --> P[Ship] --> I
 ```
 
-### A group around most of the ring
+### A group around half the ring or more
 
 A group that covers half the circle or more is drawn as a band, a strip that follows the circle. Its title sits outside it.
 
-<img src="media/lifecycle-band.png" width="640" alt="The same circle, with six of its eight boxes inside a curved grey strip titled Funded.">
+<img src="media/lifecycle-band.png" width="562" alt="The same five boxes. A curved gray strip titled Funded holds four of them, all but Idea.">
 
 ```
 ---
@@ -223,18 +227,16 @@ flowchart LR
   I[Idea]
   subgraph Funded
     S[Spec]
-    D[Design]
     B[Build]
     T[Test]
-    P[Deploy]
-    M[Monitor]
+    P[Ship]
   end
-  I --> S --> D --> B --> T --> P --> M --> R[Retire] --> I
+  I --> S --> B --> T --> P --> I
 ```
 
 ### A group inside a band
 
-A group inside a band is drawn as a band too. Its title sits between the two. The `style` line colours the inner group.
+A group inside a band is drawn as a band too. Its title sits between the two. The `style` line colors the inner group.
 
 <img src="media/nested-band.png" width="640" alt="Two curved strips, Engineering around four boxes and a yellow CI strip inside it around Code and Test.">
 
@@ -302,11 +304,11 @@ flowchart LR
 
 ## Arrows
 
-### Labels and a chord
+### Curved arrows and a chord
 
-Each label sits in the gap between two nodes. An arrow between two nodes that are not neighbours is a chord, a straight line across the circle.
+Each label sits in the gap between two nodes. An arrow between two nodes that are not neighbors is a chord, a straight line across the circle.
 
-<img src="media/daily-arcs.png" width="541" alt="Five boxes on a circle joined by curved labelled arrows, and a dotted chord from Work to Home.">
+<img src="media/daily-arcs.png" width="541" alt="Five boxes on a circle joined by curved labeled arrows, and a dotted chord from Work to Home.">
 
 ```
 ---
@@ -322,11 +324,11 @@ flowchart LR
   Wk -.->|skip the day| Hm
 ```
 
-### Straight edges
+### Straight arrows
 
-`flowchart.curve: linear` draws the arrows between neighbours as straight lines. The ring becomes a polygon.
+`flowchart.curve: linear` draws the arrows between neighbors as straight lines. The ring becomes a polygon.
 
-<img src="media/daily-straight.png" width="541" alt="The same five boxes joined by straight labelled arrows, a pentagon, with the same dotted chord.">
+<img src="media/daily-straight.png" width="541" alt="The same five boxes joined by straight labeled arrows, a pentagon, with the same dotted chord.">
 
 ```
 ---
@@ -344,11 +346,11 @@ flowchart LR
   Wk -.->|skip the day| Hm
 ```
 
-### Two arrows between the same nodes
+### Parallel lines
 
 When two straight arrows join the same two nodes, they are drawn as parallel lines. Each label steps aside to its own line's side.
 
-<img src="media/parallel-lines.png" width="418" alt="Plan, Build and Ship in a triangle. Two parallel arrows join Build and Ship, labelled ready and fix.">
+<img src="media/parallel-lines.png" width="418" alt="Plan, Build and Ship in a triangle. Two parallel arrows join Build and Ship, labeled ready and fix.">
 
 ```
 ---
@@ -364,7 +366,7 @@ flowchart LR
   C -->|fix| B
 ```
 
-### A self-loop and an arrow back
+### A loop and a return arrow
 
 An arrow from a node to itself loops outside the ring. Review points back to Draft along a second curve.
 

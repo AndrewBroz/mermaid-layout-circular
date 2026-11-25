@@ -179,7 +179,6 @@ export const cases: Case[] = [
   },
   {
     title: 'hub and spoke — the center is earned, not assumed',
-    doc: 'hub',
     wide: true,
     text:
       frontmatter('circular') +
@@ -217,7 +216,6 @@ export const cases: Case[] = [
   },
   {
     title: 'a wheel — the ring keeps its shape, the axle takes the middle',
-    doc: 'wheel',
     wide: true,
     text:
       frontmatter('circular') +
@@ -233,7 +231,6 @@ export const cases: Case[] = [
   },
   {
     title: 'a circle off a circle — the debug loop hangs off Build',
-    doc: 'satellite',
     wide: true,
     text:
       frontmatter('circular') +
@@ -245,7 +242,6 @@ export const cases: Case[] = [
   },
   {
     title: 'a figure-eight — two cycles sharing Sleep',
-    doc: 'figure-eight',
     wide: true,
     text:
       frontmatter('circular') +
@@ -320,17 +316,16 @@ export const cases: Case[] = [
     text:
       frontmatter('circular') +
       `flowchart LR
-  I[Idea] --> S[Spec] --> D[Design]
+  I[Idea] --> S[Spec]
   subgraph Make
     B[Build]
     T[Test]
   end
-  D --> B --> T --> P[Deploy] --> M[Monitor] --> R[Retire] --> I
+  S --> B --> T --> P[Ship] --> I
 `,
   },
   {
     title: 'a subgraph spanning most of the ring — a band follows the ring',
-    doc: 'lifecycle-band',
     wide: true,
     text:
       frontmatter('circular') +
@@ -384,6 +379,68 @@ export const cases: Case[] = [
     C
     D
   end
+`,
+  },
+  {
+    title: 'a compact hub — three spokes, the README picture',
+    doc: 'hub',
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  Hub[Registry] --> A[Alpha]
+  Hub --> B[Bravo]
+  Hub --> C[Charlie]
+`,
+  },
+  {
+    title: 'a compact wheel — five on the ring, Vision at the axle',
+    doc: 'wheel',
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  A[Plan] --> B[Build] --> C[Test] --> D[Ship] --> E[Learn] --> A
+  A --> V[Vision]
+  B --> V
+  C --> V
+  D --> V
+  E --> V
+`,
+  },
+  {
+    title: 'a compact satellite — written from Build, so the debug loop rises above it',
+    doc: 'satellite',
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  B[Build] --> S[Ship] --> L[Learn] --> P[Plan] --> B
+  B --> D[Debug]
+  D --> F[Fix] --> T[Test] --> D
+`,
+  },
+  {
+    title: 'a compact figure-eight — written from Sleep, so the two circles stack',
+    doc: 'figure-eight',
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  S[Sleep] --> W[Wake] --> K[Work] --> N[Dine] --> S
+  S --> R[Dream] --> T[Toss] --> S
+`,
+  },
+  {
+    title: 'a band around four of five — the README picture beside the box',
+    doc: 'lifecycle-band',
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  I[Idea]
+  subgraph Funded
+    S[Spec]
+    B[Build]
+    T[Test]
+    P[Ship]
+  end
+  I --> S --> B --> T --> P --> I
 `,
   },
   {

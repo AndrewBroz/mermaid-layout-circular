@@ -321,16 +321,23 @@ update the README beside it.
 - **2026-11-25 — The README leads with the picture, and the pictures
   come from this repo.** The README now opens with what the layout
   does and one picture, then the family table, install and setup.
-  The showcase follows setup, as a grid, and every picture's source
-  moves to `docs/GALLERY.md`. README pictures are rendered by
+  The showcase follows setup, and every picture's source moves to
+  `docs/GALLERY.md`. README pictures are rendered by
   `npm run docs:images` (`scripts/render-docs.mjs`, which screenshots
   `demo/docs.html` in the installed Chrome through `playwright-core`)
   with the repo's mermaid 12.3, at 2x, on a white card with a thin
-  grey border, rendered on macOS so every picture uses the same fonts.
+  gray border, rendered on macOS so every picture uses the same fonts.
   They replace the 11.12 renders borrowed from andrewbroz.net: the repo
   can now reproduce them on its own, and 12.x is what new users
   install. Each picture is a demo case with a `doc` name, so a picture
-  and its case can't drift apart. mermaid 12.3 draws wider boxes than
-  11.12, so the showcase grid shows each picture at half its natural
-  width, cells of unequal width, to keep its text readable. `CLAUDE.md`
-  is no longer a symlink to the README; it holds the agent's own rules.
+  and its case can't drift apart. mermaid 12.3 gives every node a
+  minimum width of 120px (`flowchart.minNodeWidth`), so its pictures
+  are wide. A first try showed the showcase at half its natural width,
+  and its node text came out about 8px, too small to read. Instead,
+  every README picture is shown at 0.65 of its natural width, one
+  scale for the whole page. The showcase and the group pair use
+  compact diagrams, with fewer nodes, so two fit side by side at that
+  scale. The satellite and figure-eight texts start at the shared
+  node, so their circles stack and stay narrow. The larger versions
+  stay in the demo. `CLAUDE.md` is no longer a symlink to the README;
+  it holds the agent's own rules.

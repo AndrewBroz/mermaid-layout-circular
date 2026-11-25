@@ -14,7 +14,7 @@ In Obsidian, use the
 plugin instead. Obsidian is a notes app that can draw mermaid
 diagrams.
 
-<img src="docs/media/water-cycle.png" width="470" alt="Five boxes on a circle, Evaporation at the top, joined clockwise by curved arrows.">
+<img src="docs/media/water-cycle.png" width="306" alt="Five boxes on a circle, Evaporation at the top, joined clockwise by curved arrows.">
 
 Pick the layout in the diagram's frontmatter. That is the settings
 block between two `---` lines at the top of the diagram. This is the
@@ -35,7 +35,7 @@ flowchart LR
 
 mermaid's default layout, called dagre, draws the same text like this:
 
-<img src="docs/media/water-cycle-dagre.png" width="640" alt="The same five boxes in a row, with one long arrow looping back from Collection to Evaporation.">
+<img src="docs/media/water-cycle-dagre.png" width="656" alt="The same five boxes in a row, with one long arrow looping back from Collection to Evaporation.">
 
 This answers a request open in mermaid since 2022,
 [mermaid-js/mermaid#3228](https://github.com/mermaid-js/mermaid/issues/3228).
@@ -44,6 +44,8 @@ This answers a request open in mermaid since 2022,
 
 The same circular layout comes in four packages. Pick the one that
 matches how you draw diagrams.
+
+Pele is a smaller program that draws diagrams from the same text.
 
 | You draw diagrams with | Use |
 | --- | --- |
@@ -54,8 +56,6 @@ matches how you draw diagrams.
 
 The first three use layout-circular to decide where each node goes.
 They place nodes the same way. They differ in how boxes and text are drawn.
-
-Pele is another program that draws diagrams from mermaid's text.
 
 ## Install
 
@@ -72,7 +72,7 @@ import circularLayouts from 'mermaid-layout-circular';
 mermaid.registerLayoutLoaders(circularLayouts);
 ```
 
-Works with mermaid 11.12 and later, up to mermaid 12.
+Works with mermaid 11.12 and later, including every 12.x release.
 
 ### From a CDN
 
@@ -90,7 +90,8 @@ flowchart LR
 
 <script type="module">
   import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@12/dist/mermaid.esm.min.mjs';
-  import circularLayouts from 'https://cdn.jsdelivr.net/npm/mermaid-layout-circular@0.10/dist/mermaid-layout-circular.js';
+  import circularLayouts from
+    'https://cdn.jsdelivr.net/npm/mermaid-layout-circular@0.10/dist/mermaid-layout-circular.js';
 
   mermaid.registerLayoutLoaders(circularLayouts);
   await mermaid.run();
@@ -108,7 +109,7 @@ labels, styles, classes and themes. The direction after `flowchart`
 
 mermaid's hand-drawn look works too:
 
-<img src="docs/media/hand-drawn.png" width="360" alt="Four sketchy boxes on a circle, Listen at the top, joined clockwise by hand-drawn arrows.">
+<img src="docs/media/hand-drawn.png" width="351" alt="Four sketchy boxes on a circle, Listen at the top, joined clockwise by hand-drawn arrows.">
 
 ```
 ---
@@ -126,18 +127,18 @@ flowchart LR
 
 ## Straight edges
 
-By default, an arrow between two neighbours on the circle is curved
+By default, an arrow between two neighbors on the circle is curved
 along it. Set `flowchart.curve` to `linear` to draw straight lines
 instead, so the ring becomes a polygon.
 
-An arrow between two nodes that are not neighbours is called a chord.
+An arrow between two nodes that are not neighbors is called a chord.
 A chord is always a straight line across the circle. When two straight
 arrows join the same two nodes, they are drawn as parallel lines, each
 with its label on its own side.
 
 | Curved arrows (the default) | `curve: linear` |
 | --- | --- |
-| <img src="docs/media/daily-arcs.png" width="360" alt="Five boxes on a circle joined by curved labelled arrows, and a dotted chord from Work to Home."> | <img src="docs/media/daily-straight.png" width="360" alt="The same five boxes joined by straight labelled arrows, a pentagon, with the same dotted chord."> |
+| <img src="docs/media/daily-arcs.png" width="352" alt="Five boxes on a circle joined by curved labeled arrows, and a dotted chord from Work to Home."> | <img src="docs/media/daily-straight.png" width="352" alt="The same five boxes joined by straight labeled arrows, a pentagon, with the same dotted chord."> |
 
 The text for the straight version is below. The curved one is the
 same without the `flowchart` and `curve` lines.
@@ -169,14 +170,9 @@ strip that follows the circle. A box around that much of a circle
 would cover the middle. When arrows cross the top of a box, its title
 moves to the bottom.
 
-<table>
-<tr>
-<td align="center"><img src="docs/media/lifecycle-box.png" width="480" alt="Eight boxes on a circle. Build and Test sit inside a grey box titled Make, at the bottom right."><br>A small group: a box</td>
-</tr>
-<tr>
-<td align="center"><img src="docs/media/lifecycle-band.png" width="480" alt="The same circle, with six of its eight boxes inside a curved grey strip titled Funded."><br>A group around half the ring or more: a band</td>
-</tr>
-</table>
+| A small group: a box | A group around half the ring or more: a band |
+| --- | --- |
+| <img src="docs/media/lifecycle-box.png" width="315" alt="Five boxes on a circle. Build and Test sit inside a gray box titled Make, at the bottom."> | <img src="docs/media/lifecycle-band.png" width="365" alt="The same five boxes. A curved gray strip titled Funded holds four of them, all but Idea."> |
 
 More group examples are in the [gallery](docs/GALLERY.md#groups).
 
@@ -184,31 +180,21 @@ More group examples are in the [gallery](docs/GALLERY.md#groups).
 
 Not every diagram is one plain cycle. The layout keeps the main cycle
 on the circle, called the ring, and places everything else around it.
+A hub is one node linked to most of the others. A satellite is a
+second, smaller cycle hanging off the ring, drawn as its own circle. A
+branch is a node that hangs off the ring, pointing outward; the
+[gallery](docs/GALLERY.md#branches) shows branches.
 
 <table>
 <tr>
-<td align="center"><img src="docs/media/branches.png" width="325" alt="Four boxes on a ring. Idea points in from above, and Build log and Release notes point outward."><br>Branches hang off the ring</td>
-<td align="center"><img src="docs/media/hub.png" width="393" alt="Registry in the middle with arrows out to five boxes around it, and Bravo's log hanging off Bravo."><br>A hub goes in the middle</td>
+<td align="center"><img src="docs/media/hub.png" width="358" alt="Registry in the middle, with arrows out to Alpha above and to Bravo and Charlie below."><br>A hub goes in the middle</td>
+<td align="center"><img src="docs/media/satellite.png" width="296" alt="Build, Ship, Learn and Plan on a ring. Above Build, Debug, Fix and Test make a smaller circle."><br>A cycle off the ring gets its own circle</td>
 </tr>
-</table>
-
-<table>
 <tr>
-<td align="center"><img src="docs/media/satellite.png" width="414" alt="A four-box ring, and beyond Build a smaller circle of Debug, Fix and Test."><br>A cycle off the ring gets its own circle</td>
-<td align="center"><img src="docs/media/figure-eight.png" width="318" alt="Two circles meeting at Sleep: Wake, Work and Dine on the right, Dream and Toss on the left."><br>Two cycles sharing a node: a figure-eight</td>
+<td align="center"><img src="docs/media/wheel.png" width="388" alt="Five boxes on a ring from Plan to Learn, each with a straight arrow to Vision in the middle."><br>A wheel: a ring around a hub</td>
+<td align="center"><img src="docs/media/figure-eight.png" width="297" alt="Two circles stacked at Sleep: Wake, Work and Dine below, Dream and Toss above."><br>Two cycles sharing a node: a figure-eight</td>
 </tr>
 </table>
-
-<table>
-<tr>
-<td align="center"><img src="docs/media/wheel.png" width="283" alt="Six boxes on a ring from Plan to Learn, each with a straight arrow to Vision in the middle."><br>A wheel: a ring around a hub</td>
-<td align="center"><img src="docs/media/three-gears.png" width="448" alt="Three circles in a chain, Mine to Invest, then Smelt to Sort, then Scrap to Melt."><br>Cycles linked in a chain, each turning the other way</td>
-</tr>
-</table>
-
-A branch is a node that hangs off the ring, pointing outward. A hub is
-one node linked to most of the others. A satellite is a second, smaller
-cycle hanging off the ring, drawn as its own circle.
 
 The source of every picture on this page is in
 [docs/GALLERY.md](docs/GALLERY.md), along with more examples. The
@@ -220,9 +206,10 @@ draws every case in your browser.
 The layout puts a node in the middle only when the diagram's shape
 calls for it. Two shapes do.
 
-- A wheel. One node on the ring links to more ring nodes than any
-  other node does, and the ring still closes without it. A node linked
-  to every other ring node counts even if the ring has gaps.
+- A wheel. One node in the cycle links to more of the cycle's nodes
+  than any other node does, and to at least three. The cycle still
+  closes without it. A node linked to every other node in the cycle
+  also counts, even if the cycle has gaps.
 - A star. The diagram has no cycle, and one node has more links than
   any other, at least three.
 
@@ -233,7 +220,8 @@ next to the registration, not in frontmatter:
 import { setCircularLayoutOptions } from 'mermaid-layout-circular';
 
 setCircularLayoutOptions({ hub: 'none' }); // never use a hub
-setCircularLayoutOptions({ hub: 'Hub' });  // the node with id Hub is the hub
+// or
+setCircularLayoutOptions({ hub: 'Hub' }); // the node with id Hub is the hub
 ```
 
 A node's id is the name before its brackets in the diagram text. In
@@ -245,10 +233,11 @@ mermaid's settings have no place for layout options, so you set them in
 code with `setCircularLayoutOptions`, next to the registration:
 
 ```ts
-setCircularLayoutOptions({ spacing: 60 });
+setCircularLayoutOptions({ spacing: 60, hub: 'none' });
 ```
 
-Two things to know:
+Each call replaces the options set before it, so pass them all in one
+call.
 
 - `spacing`, the gap between nodes, starts from mermaid's own
   `flowchart.nodeSpacing`.

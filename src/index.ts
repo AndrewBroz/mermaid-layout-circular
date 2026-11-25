@@ -9,7 +9,7 @@ const circularLayouts: LayoutLoaderDefinition[] = ['circular', 'circular-ccw'].m
 }));
 
 export default circularLayouts;
-export { circularLayout } from './layout.js';
+export { circularLayout } from 'layout-circular';
 export { setCircularLayoutOptions } from './options.js';
 export type {
   CircularLayoutOptions,
@@ -19,4 +19,4 @@ export type {
   PlacedNode,
   Point,
   RoutedEdge,
-} from './layout.js';
+} from 'layout-circular';

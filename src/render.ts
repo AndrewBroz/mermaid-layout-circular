@@ -1,6 +1,6 @@
 import type { InternalHelpers, LayoutData, RenderOptions, SVG } from 'mermaid';
-import { circularLayout } from './layout.js';
-import type { CircularLayoutOptions, LayoutNodeInput, Point } from './layout.js';
+import { circularLayout } from 'layout-circular';
+import type { CircularLayoutOptions, LayoutNodeInput, Point } from 'layout-circular';
 import { circularLayoutOptions } from './options.js';
 
 /**
@@ -51,6 +51,29 @@ const CLUSTER_TITLE = 26;
  *  on the edge itself; the wrapper's own getBBox reads zero for
  *  foreignObject labels. */
 const labelSize = (edge: LayoutEdge) => edge as { width?: number; height?: number };
+
+/**
+ * The options handed to the placement math, lowest precedence first:
+ * what mermaid itself needs, then what mermaid's config says, then
+ * what the consumer set in code, then the diagram's own layout name.
+ */
+export const layoutOptionsFor = (
+  config: LayoutData['config'],
+  algorithm?: string
+): CircularLayoutOptions => {
+  const nodeSpacing = config.flowchart?.nodeSpacing;
+  return {
+    // Mermaid's marker handling moves points within about 5px of a
+    // path's end. A 10px straight tail outreaches it, so arrowheads
+    // keep the curve's own direction.
+    tail: 10,
+    ...(nodeSpacing !== undefined && { spacing: nodeSpacing }),
+    ...circularLayoutOptions(),
+    // The diagram picked circular-ccw by name in its own frontmatter —
+    // the most local signal there is, so it outranks options set in code.
+    ...(algorithm === 'circular-ccw' && { direction: 'counterclockwise' as const }),
+  };
+};
 
 export const render = async (
   data4Layout: LayoutData,
@@ -128,15 +151,11 @@ export const render = async (
     }),
   }));
 
-  const nodeSpacing = data4Layout.config.flowchart?.nodeSpacing;
-  const layoutOptions: CircularLayoutOptions = {
-    ...(nodeSpacing !== undefined && { spacing: nodeSpacing }),
-    ...circularLayoutOptions(),
-    // The diagram picked circular-ccw by name in its own frontmatter —
-    // the most local signal there is, so it outranks options set in code.
-    ...(options?.algorithm === 'circular-ccw' && { direction: 'counterclockwise' as const }),
-  };
-  const result = circularLayout(measured, layoutEdges, layoutOptions);
+  const result = circularLayout(
+    measured,
+    layoutEdges,
+    layoutOptionsFor(data4Layout.config, options?.algorithm)
+  );
 
   for (const placed of result.nodes) {
     const node = nodeDb.get(placed.id);
@@ -222,7 +241,6 @@ export const render = async (
   }
 
   const routedById = new Map(result.edges.map((e) => [e.id, e]));
-  const placedNodes = [...nodeDb.values()];
 
   for (const edge of data4Layout.edges) {
     const startNode = nodeDb.get(edge.start ?? '');
@@ -243,40 +261,12 @@ export const render = async (
             { x: endNode.x ?? 0, y: endNode.y ?? 0 },
           ];
 
+    // The core seats each measured label: the middle sample, slid
+    // radially outward when a rim label crowds its neighbors.
     // positionEdgeLabel falls back to edge.x/y when the path is not
-    // trimmed; give it the path's midpoint so a label never lands at
-    // the origin.
-    const mid = points[Math.floor(points.length / 2)]!;
-    let labelAt = mid;
-    // A label wider than its gap would sit on the neighboring
-    // boxes. The label's true size is known here — measure its
-    // rectangle against every node box, and while it collides,
-    // slide it radially outward: outside the ring there is always
-    // room. Rim edges only; a chord's label lives in the middle,
-    // which the swerve already keeps clear.
-    const { width: labelW = 0, height: labelH = 0 } = labelSize(edge);
-    const r = Math.hypot(mid.x, mid.y);
-    if (edge.label && routed?.onRim && labelW > 0 && r > 0) {
-      const collides = (at: Point, breath: number): boolean =>
-        placedNodes.some(
-          (node) =>
-            Math.abs(at.x - (node.x ?? 0)) < (labelW + breath + (node.width ?? 0)) / 2 &&
-            Math.abs(at.y - (node.y ?? 0)) < (labelH + breath + (node.height ?? 0)) / 2
-        );
-      // Two tiers: a label that fits inline with modest breathing
-      // room stays inline — a home inside the gap beats an airier
-      // exile outside the ring. Only when even the modest fit
-      // fails does the label slide outward, and then it clears
-      // generously.
-      if (collides(labelAt, 14)) {
-        // The cap scales with the label: a wide label needs a
-        // longer slide before it can possibly clear.
-        const maxPush = 64 + labelW + labelH;
-        for (let push = 8; collides(labelAt, 32) && push <= maxPush; push += 8) {
-          labelAt = { x: (mid.x * (r + push)) / r, y: (mid.y * (r + push)) / r };
-        }
-      }
-    }
+    // trimmed, so an unlabeled edge gets the path's midpoint, and a
+    // label never lands at the origin.
+    const labelAt = routed?.label ?? points[Math.floor(points.length / 2)]!;
     const edgeWithPath = { ...edge, points, x: labelAt.x, y: labelAt.y };
 
     // The layout anchored both endpoints exactly on the silhouette

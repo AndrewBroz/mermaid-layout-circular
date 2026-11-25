@@ -20,11 +20,11 @@ describe('layoutOptionsFor', () => {
   });
 
   it('lets options set in code override what the seam derives', () => {
-    setCircularLayoutOptions({ spacing: 40, tail: 12, bow: 0.4 });
+    setCircularLayoutOptions({ spacing: 40, tail: 12, parallelGap: 14 });
     expect(layoutOptionsFor({ flowchart: { nodeSpacing: 70 } })).toEqual({
       tail: 12,
       spacing: 40,
-      bow: 0.4,
+      parallelGap: 14,
     });
   });
 

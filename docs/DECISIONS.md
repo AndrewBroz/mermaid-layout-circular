@@ -274,3 +274,17 @@ update the README beside it.
   curve and `linkStyle default interpolate linear` are not read. The
   demo gallery has a case. This needs a release of layout-circular
   with the `edges` option.
+- **2026-11-25 — Chords are straight; bow and swerve are gone.** The
+  owner decided that a chord is always a straight line, whatever
+  `flowchart.curve` says, and that `bow` and `swerve` are removed
+  rather than kept as opt-in. The decision and its reasons are
+  recorded in layout-circular's DECISIONS. It supersedes this file's
+  trial verdicts on chord bow (inward 0.35) and swerve (0.2).
+  `curve: linear` now changes only the edges between ring neighbors.
+  The demo's `bow` and `swerve` trial suites are removed, and the
+  trials page opens on `ordering`. The screenshots in `trials/` stay
+  as history. Of the README images, only `labels-and-chord.png` shows
+  a chord, so only it was re-rendered. It was rendered with mermaid
+  11.12, like its neighbors, since 12.3 draws nodes with a different
+  look. This needs layout-circular 0.2.0 or the commit that removes
+  the options.

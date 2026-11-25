@@ -259,13 +259,17 @@ flowchart LR
   A[Plan] --> B[Build] --> C[Ship] --> A
 ```
 
-Each edge between ring nodes is then a straight line from border to
-border, so a three-cycle reads as a triangle. Chords lose their bow,
-and two opposite edges become two parallel lines. Placement does not
-change. Only `linear` selects straight edges. Every other curve keeps
-the arcs. It works with `circular-ccw` too. A straight chord across a
-ring with a hub runs through the hub, where arcs would swerve around
-it.
+Each edge between ring neighbors is then a straight line from border
+to border, so a three-cycle reads as a triangle, and two opposite
+edges become two parallel lines. Placement does not change. Only
+`linear` selects straight edges. Every other curve keeps the arcs. It
+works with `circular-ccw` too.
+
+Chords, edges between ring nodes that aren't neighbors, are straight
+whatever the curve. The ring's own edges carry the cycle, and a chord
+is a shortcut across it. Two opposite chords become two parallel
+lines, with their labels stepped aside. A chord across a ring with a
+hub runs through the hub.
 
 Subgraphs:
 
@@ -314,7 +318,7 @@ knobs are set in code, next to registration:
 ```ts
 import { setCircularLayoutOptions } from 'mermaid-layout-circular';
 
-setCircularLayoutOptions({ spacing: 60, bow: 0.4 });
+setCircularLayoutOptions({ spacing: 60, parallelGap: 12 });
 ```
 
 The available options and their defaults live in `CircularLayoutOptions`
@@ -322,15 +326,15 @@ and `defaults` in `src/layout.ts` of `layout-circular`, the package
 that holds the placement math. Every default was chosen by
 rendering the alternatives and looking at them. The screenshots that
 drove those choices are committed in `trials/`, and the verdicts are
-recorded in `docs/DECISIONS.md`. When no option overrides it, `spacing`
+recorded in `docs/DECISIONS.md`. The bow and swerve trials there are
+history: those options were removed when chords became straight. When no option overrides it, `spacing`
 is seeded from mermaid's own `flowchart.nodeSpacing`. This package sets
 `tail` to 10, to clear mermaid's marker handling.
 
 ## Demo
 
 `npm run dev` serves the demo. The gallery at `/` renders every case in `demo/cases.ts`, and
-`/trials.html?suite=bow` (also `swerve`, `ordering`, `spacing`,
-`samples`) renders the same diagrams under different option values for
+`/trials.html?suite=ordering` (also `spacing`, `samples`) renders the same diagrams under different option values for
 side-by-side comparison.
 
 ## Development

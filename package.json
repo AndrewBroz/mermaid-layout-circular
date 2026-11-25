@@ -19,7 +19,7 @@
   },
   "scripts": {
     "dev": "vite demo",
-    "build": "vite build && tsc -p tsconfig.build.json",
+    "build": "vite build && dts-bundle-generator --project tsconfig.build.json --external-inlines layout-circular --no-check --no-banner -o dist/index.d.ts src/index.ts",
     "prepare": "npm run build",
     "test": "vitest run",
     "lint": "eslint . && tsc -p tsconfig.json"
@@ -43,7 +43,9 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.20.7",
+    "dts-bundle-generator": "^9.5.1",
     "eslint": "^10.8.0",
+    "layout-circular": "file:../layout-circular",
     "mermaid": "^12.3.0",
     "typescript": "^5.9.0",
     "typescript-eslint": "^8.46.0",

@@ -236,3 +236,21 @@ update the README beside it.
   explicit `hub` naming an off-ring node is ignored silently once the
   graph has a cycle, and a colliding label on a satellite's rim
   slides outward from the main center, not the satellite's.
+- **2026-11-25 — The math comes from layout-circular.** The placement
+  math moved to its own package, `layout-circular`, shared with the
+  Pele layout. `src/layout.ts` and `src/layout.test.ts` are gone. The
+  math and its tests live there now, with their history. This package
+  lists it as a devDependency. Vite compiles it into the bundle, and
+  dts-bundle-generator inlines its types into `dist/index.d.ts`. The
+  published package has no runtime dependency on it. The reason is
+  the upstreams: mermaid and Pele both take in layout code as source,
+  not as a dependency, so the core is built to be copied, and this
+  package copies it at build time. What only mermaid needs stays in
+  `src/render.ts`. It passes `tail: 10`, because mermaid's marker
+  handling moves points within about 5px of a path's end. Label
+  placement moved into the core unchanged, so `render.ts` now draws
+  each label at the point the core returns. Its own tests cover which
+  options reach the math. The gallery and the five trial suites render
+  identically before and after. Open: CI runs `npm ci`, which cannot
+  resolve `file:../layout-circular` on GitHub. That waits on
+  `layout-circular` getting a remote or an npm release.

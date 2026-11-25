@@ -292,11 +292,13 @@ setCircularLayoutOptions({ spacing: 60, bow: 0.4 });
 ```
 
 The available options and their defaults live in `CircularLayoutOptions`
-and `defaults` in `src/layout.ts`. Every default was chosen by rendering
-the alternatives and looking at them. The screenshots that drove those
-choices are committed in `trials/`, and the verdicts are recorded in
-`docs/DECISIONS.md`. When no option overrides it, `spacing` is seeded
-from mermaid's own `flowchart.nodeSpacing`.
+and `defaults` in `src/layout.ts` of `layout-circular`, the package
+that holds the placement math. Every default was chosen by
+rendering the alternatives and looking at them. The screenshots that
+drove those choices are committed in `trials/`, and the verdicts are
+recorded in `docs/DECISIONS.md`. When no option overrides it, `spacing`
+is seeded from mermaid's own `flowchart.nodeSpacing`. This package sets
+`tail` to 10, to clear mermaid's marker handling.
 
 ## Demo
 
@@ -307,12 +309,21 @@ side-by-side comparison.
 
 ## Development
 
+The placement math lives in `layout-circular`. It is a devDependency.
+The build compiles it into this package's bundle, and its types into
+`dist/index.d.ts`. The published package does not depend on it at
+runtime. Changes to the math, its options and its tests go
+there. This repo keeps the mermaid seam: `src/render.ts` measures nodes
+and labels, hands them to the math, and draws the result through
+mermaid. For now the dependency is `file:../layout-circular`, so the
+two repos must sit side by side, and `layout-circular` must be built.
+
 Three gates, all green before committing changes to `src/`:
 
 ```sh
-npm test        # vitest, the placement math
+npm test        # vitest, the mermaid seam
 npm run lint    # eslint
-npm run build   # vite library build plus type declarations
+npm run build   # vite library build plus bundled type declarations
 ```
 
 ## Caveats

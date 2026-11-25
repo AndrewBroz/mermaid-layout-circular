@@ -288,3 +288,33 @@ update the README beside it.
   11.12, like its neighbors, since 12.3 draws nodes with a different
   look. This needs layout-circular 0.2.0 or the commit that removes
   the options.
+- **2026-11-25 — Subgraph shapes come from the core.** `render.ts`
+  drew each cluster as the padded union of where its members landed,
+  and nothing kept that box off other nodes or boxes. `layout-circular`
+  now places group shapes, strategy D2 from the owner's prototype
+  gallery (its DECISIONS entry "Group shapes are placed here, the book
+  designer's way"). The seam passes each subgraph's parent, mermaid's
+  own padding, `CLUSTER_PAD` (12px a side) with `CLUSTER_TITLE` (26px)
+  added on top, and the title's measured size, through
+  `layoutGroupsFor`. The title is measured by drawing each cluster
+  once, hidden, with `insertCluster`, because a band seats its caption
+  outside itself before anything is placed. A box is drawn by
+  `insertCluster` at the core's rect, as before. A band is drawn by
+  `insertCluster` at its bounds, then its rect is replaced with a path,
+  the band's outline. Mermaid colors cluster rects through
+  `.cluster rect`, which a path doesn't match, so the path carries the
+  colors the rect computed to, then the rect's own style. Under
+  `look: handDrawn` the wall is rough.js paths, so a band takes the
+  theme's cluster colors and is drawn plain. The cluster's title moves
+  to the band's caption point. A box's title follows the core too:
+  where spokes or chords cross the top, the core moves the title room
+  to the bottom, and the seam moves mermaid's cluster label there. On
+  top, the label keeps mermaid's height and slides to the spot the
+  core found clear of edges. The subgraph pictures in `docs/media`
+  were redrawn with mermaid 11.12, as the others were. Known limit:
+  under `look: handDrawn` a band is drawn plain. When the core reports `groupsClear`
+  false, the seam logs a warning. The union code is gone. The demo
+  gains a band case and a nested-band case. Diagrams without
+  subgraphs take the same path as before. This needs a release of
+  layout-circular with group shapes; the lockfile moves to that commit
+  once it merges.

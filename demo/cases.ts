@@ -257,6 +257,43 @@ export const cases: Case[] = [
 `,
   },
   {
+    title: 'a subgraph spanning most of the ring — a band follows the ring',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  I[Idea]
+  subgraph Funded
+    S[Spec]
+    D[Design]
+    B[Build]
+    T[Test]
+    P[Deploy]
+    M[Monitor]
+  end
+  I --> S --> D --> B --> T --> P --> M --> R[Retire] --> I
+`,
+  },
+  {
+    title: 'a subgraph nested in a band is a band too, its title between the two',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  P[Plan]
+  subgraph Engineering
+    D[Design]
+    subgraph CI
+      C[Code]
+      T[Test]
+    end
+    R[Release]
+  end
+  P --> D --> C --> T --> R --> V[Review] --> P
+  style CI fill:#ffd
+`,
+  },
+  {
     title: 'ten nodes',
     wide: true,
     text:

@@ -296,6 +296,36 @@ A subgraph around a child cycle:
 
 ![A product loop with the debug triangle drawn as a satellite circle inside its own titled box](docs/media/subgraph-satellite.png)
 
+Each subgraph keeps clear of the nodes outside it and of the
+subgraphs beside it, and the circle stays whole: even gaps, one
+radius, mirror symmetry. To make room the layout turns the ring, so
+another node or the gap between two takes the top, and grows it
+evenly as far as needed. A subgraph whose members span half the ring
+or more is drawn as a band that follows the ring, with its title just
+outside, since a box around that much of a circle would cover the
+middle:
+
+```
+---
+config:
+  layout: circular
+---
+flowchart LR
+  I[Idea]
+  subgraph Funded
+    S[Spec] --> D[Design] --> B[Build] --> T[Test] --> P[Deploy] --> M[Monitor]
+  end
+  I --> S
+  M --> R[Retire] --> I
+```
+
+A subgraph nested in a band is a band too, with its title between the
+two. Nested boxes seat together, and an outer box wraps the inner ones.
+A box's title sits on top, slid along to a spot no edge crosses, or at
+the bottom when spokes or chords run through the top.
+With `look: handDrawn`, a band is drawn plain, in the theme's cluster
+colors.
+
 An edge pointing at a subgraph itself (rather than a node inside it)
 is not handled yet, and drops with a warning. Diagram types other
 than flowcharts are out of scope.

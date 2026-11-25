@@ -1,6 +1,14 @@
 import type { InternalHelpers, LayoutData, RenderOptions, SVG } from 'mermaid';
-import { circularLayout } from 'layout-circular';
-import type { CircularLayoutOptions, LayoutNodeInput, Point } from 'layout-circular';
+import { circularLayout, groupBounds } from 'layout-circular';
+import type {
+  CircularLayoutOptions,
+  GroupBand,
+  GroupBox,
+  GroupPadding,
+  LayoutGroupInput,
+  LayoutNodeInput,
+  Point,
+} from 'layout-circular';
 import { circularLayoutOptions } from './options.js';
 
 /**
@@ -46,6 +54,71 @@ const CLUSTER_PAD = 12;
 /** Extra top headroom for the title mermaid paints inside the box's
  *  upper edge: one line of the default 16px label plus its margin. */
 const CLUSTER_TITLE = 26;
+const CLUSTER_PADDING: GroupPadding = {
+  top: CLUSTER_PAD + CLUSTER_TITLE,
+  right: CLUSTER_PAD,
+  bottom: CLUSTER_PAD,
+  left: CLUSTER_PAD,
+};
+
+/**
+ * The subgraphs handed to the placement math: mermaid's cluster
+ * padding, each one's parent when that parent is a subgraph too, and
+ * its title's measured size, which a band needs to seat its caption.
+ * The math returns each shape clear of everything outside it.
+ */
+export const layoutGroupsFor = (
+  groupNodes: { id: string; parentId?: string }[],
+  titles: Map<string, { width: number; height: number }> = new Map()
+): LayoutGroupInput[] => {
+  const ids = new Set(groupNodes.map((g) => g.id));
+  return groupNodes.map((g) => {
+    const title = titles.get(g.id);
+    return {
+      id: g.id,
+      ...(g.parentId !== undefined && ids.has(g.parentId) && { parent: g.parentId }),
+      padding: CLUSTER_PADDING,
+      ...(title && { title }),
+    };
+  });
+};
+
+/**
+ * Where a box's cluster label goes when the core moved its title, as
+ * the label's top-left corner: undefined for a title centered on top,
+ * which mermaid already places. A title on top keeps mermaid's height
+ * and slides to the core's clear spot; a title at the bottom centers
+ * on the core's point.
+ */
+export const boxTitleAt = (
+  box: GroupBox,
+  label: { width: number; height: number }
+): { x: number; y?: number } | undefined => {
+  const x = box.title.x - label.width / 2;
+  if (box.titleSide === 'bottom') {
+    return { x, y: box.title.y - label.height / 2 };
+  }
+  // Half a pixel: closer than that is the middle mermaid uses anyway.
+  return Math.abs(box.title.x - box.x) > 0.5 ? { x } : undefined;
+};
+
+/** Two decimals, enough for a path, and no -0 or 6e-15. */
+const num = (v: number): number => Math.round(v * 100) / 100 || 0;
+
+/** A band's outline, an annular sector: the outer arc clockwise, then
+ *  the inner arc back. */
+export const bandPath = (b: GroupBand): string => {
+  const at = (r: number, a: number) =>
+    `${num(b.center.x + r * Math.cos(a))},${num(b.center.y + r * Math.sin(a))}`;
+  const large = b.endAngle - b.startAngle > Math.PI ? 1 : 0;
+  const R = num(b.outerRadius);
+  const outer = `M${at(b.outerRadius, b.startAngle)}A${R},${R} 0 ${large} 1 ${at(b.outerRadius, b.endAngle)}`;
+  if (b.innerRadius <= 0) {
+    return `${outer}L${num(b.center.x)},${num(b.center.y)}Z`;
+  }
+  const r = num(b.innerRadius);
+  return `${outer}L${at(b.innerRadius, b.endAngle)}A${r},${r} 0 ${large} 0 ${at(b.innerRadius, b.startAngle)}Z`;
+};
 
 /** insertEdgeLabel measures the rendered label and records its size
  *  on the edge itself; the wrapper's own getBBox reads zero for
@@ -132,7 +205,7 @@ export const render = async (
       width,
       height,
       shape: SHAPE_FAMILIES[node.shape ?? ''] ?? 'box',
-      // Innermost membership only; outer boxes wrap inner ones later.
+      // Innermost membership only; the groups say who nests in whom.
       ...(node.parentId !== undefined && groupIds.has(node.parentId) && { group: node.parentId }),
     });
   }
@@ -155,11 +228,31 @@ export const render = async (
     }),
   }));
 
+  // Each subgraph's title, measured by drawing the cluster once off to
+  // the side: a band seats its caption outside itself, so the math
+  // needs the caption's size before it places anything.
+  const titles = new Map<string, { width: number; height: number }>();
+  if (groupNodes.length > 0) {
+    const scratch = element.insert('g').attr('class', 'clusters').attr('visibility', 'hidden');
+    for (const g of groupNodes) {
+      const probe = { ...g, x: 0, y: 0, width: 0, height: 0 };
+      const { labelBBox } = await insertCluster(scratch, probe as Parameters<typeof insertCluster>[1]);
+      if (labelBBox.width > 0 || labelBBox.height > 0) {
+        titles.set(g.id, { width: labelBBox.width, height: labelBBox.height });
+      }
+    }
+    scratch.remove();
+  }
+
   const result = circularLayout(
     measured,
     layoutEdges,
-    layoutOptionsFor(data4Layout.config, options?.algorithm)
+    layoutOptionsFor(data4Layout.config, options?.algorithm),
+    layoutGroupsFor(groupNodes, titles)
   );
+  if (result.groupsClear === false) {
+    log.warn('circular layout: a subgraph could not be kept clear of every node outside it');
+  }
 
   for (const placed of result.nodes) {
     const node = nodeDb.get(placed.id);
@@ -171,10 +264,12 @@ export const render = async (
     domOf.get(placed.id)?.attr('transform', `translate(${placed.x}, ${placed.y})`);
   }
 
-  // Subgraph boxes wrap wherever their members landed: the padded
-  // union of member boxes, deepest group first so an outer box can
-  // wrap its inner boxes, drawn shallow-first so outer paints behind
-  // inner.
+  // Subgraph shapes stand where the math put them, each clear of
+  // everything outside it. Outer shapes go first, so they paint behind
+  // the shapes they wrap. A box is mermaid's own cluster. A band is
+  // mermaid's cluster drawn at the band's bounds, its rect then traded
+  // for the band's outline, with the colors the rect had, and its title
+  // moved to the band's caption point.
   if (groupNodes.length > 0) {
     const groupById = new Map(groupNodes.map((g) => [g.id, g]));
     const depthOf = (g: LayoutNode): number => {
@@ -188,59 +283,65 @@ export const render = async (
       }
       return depth;
     };
-    interface Rect {
-      minX: number;
-      minY: number;
-      maxX: number;
-      maxY: number;
-    }
-    const rects = new Map<string, Rect>();
-    const deepFirst = [...groupNodes].sort((a, b) => depthOf(b) - depthOf(a));
-    for (const g of deepFirst) {
-      let minX = Infinity;
-      let minY = Infinity;
-      let maxX = -Infinity;
-      let maxY = -Infinity;
-      for (const member of nodeDb.values()) {
-        if (member.parentId !== g.id || member.x === undefined || member.y === undefined) {
-          continue;
-        }
-        minX = Math.min(minX, member.x - (member.width ?? 0) / 2);
-        maxX = Math.max(maxX, member.x + (member.width ?? 0) / 2);
-        minY = Math.min(minY, member.y - (member.height ?? 0) / 2);
-        maxY = Math.max(maxY, member.y + (member.height ?? 0) / 2);
-      }
-      for (const child of groupNodes) {
-        const r = child.parentId === g.id ? rects.get(child.id) : undefined;
-        if (!r) {
-          continue;
-        }
-        minX = Math.min(minX, r.minX);
-        maxX = Math.max(maxX, r.maxX);
-        minY = Math.min(minY, r.minY);
-        maxY = Math.max(maxY, r.maxY);
-      }
-      if (!Number.isFinite(minX)) {
+    const shapeOf = new Map((result.groups ?? []).map((b) => [b.id, b]));
+    for (const g of [...groupNodes].sort((a, b) => depthOf(a) - depthOf(b))) {
+      const shape = shapeOf.get(g.id);
+      if (!shape) {
         log.warn(`circular layout: subgraph ${g.id} has no placed members — box skipped`);
         continue;
       }
-      rects.set(g.id, {
-        minX: minX - CLUSTER_PAD,
-        minY: minY - CLUSTER_PAD - CLUSTER_TITLE,
-        maxX: maxX + CLUSTER_PAD,
-        maxY: maxY + CLUSTER_PAD,
-      });
-    }
-    for (const g of [...deepFirst].reverse()) {
-      const r = rects.get(g.id);
-      if (!r) {
+      if (shape.kind === 'box') {
+        g.x = shape.x;
+        g.y = shape.y;
+        g.width = shape.width;
+        g.height = shape.height;
+        const { cluster, labelBBox } = await insertCluster(
+          clustersEl,
+          g as Parameters<typeof insertCluster>[1]
+        );
+        // The core moves a title to the bottom where spokes or chords
+        // cross the top, or along the top to a spot they leave clear.
+        const moved = boxTitleAt(shape, labelBBox);
+        const label = (cluster.node() as SVGGElement | null)?.querySelector(':scope > .cluster-label');
+        if (moved && label) {
+          const now = /translate\(\s*([-\d.e]+)[,\s]+([-\d.e]+)/.exec(label.getAttribute('transform') ?? '');
+          label.setAttribute('transform', `translate(${moved.x}, ${moved.y ?? Number(now?.[2] ?? 0)})`);
+        }
         continue;
       }
-      g.x = (r.minX + r.maxX) / 2;
-      g.y = (r.minY + r.maxY) / 2;
-      g.width = r.maxX - r.minX;
-      g.height = r.maxY - r.minY;
-      await insertCluster(clustersEl, g as Parameters<typeof insertCluster>[1]);
+      const bounds = groupBounds(shape);
+      g.x = (bounds.minX + bounds.maxX) / 2;
+      g.y = (bounds.minY + bounds.maxY) / 2;
+      g.width = bounds.maxX - bounds.minX;
+      g.height = bounds.maxY - bounds.minY;
+      const { cluster, labelBBox } = await insertCluster(
+        clustersEl,
+        g as Parameters<typeof insertCluster>[1]
+      );
+      const el = cluster.node() as SVGGElement | null;
+      const wall = el?.firstElementChild as SVGGraphicsElement | null | undefined;
+      if (!el || !wall) {
+        continue;
+      }
+      // Mermaid colors a cluster's rect through `.cluster rect`, which a
+      // path doesn't match, so the path carries the colors the wall
+      // computed to, then the wall's own style, as the rect had it.
+      // The hand-drawn look draws its wall with rough.js, in the theme's
+      // cluster colors; the band takes those colors, drawn plain.
+      const theme = data4Layout.config.themeVariables as Record<string, string> | undefined;
+      const look = getComputedStyle(wall);
+      const colors =
+        wall.tagName === 'rect'
+          ? `fill:${look.fill};stroke:${look.stroke};stroke-width:${look.strokeWidth};${wall.getAttribute('style') ?? ''}`
+          : `fill:${theme?.clusterBkg ?? 'none'};stroke:${theme?.clusterBorder ?? 'currentColor'};stroke-width:1px;`;
+      const band = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      band.setAttribute('d', bandPath(shape));
+      band.setAttribute('style', colors);
+      el.replaceChild(band, wall);
+      el.querySelector(':scope > .cluster-label')?.setAttribute(
+        'transform',
+        `translate(${shape.title.x - labelBBox.width / 2}, ${shape.title.y - labelBBox.height / 2})`
+      );
     }
   }
 

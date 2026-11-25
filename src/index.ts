@@ -14,7 +14,12 @@ export { setCircularLayoutOptions } from './options.js';
 export type {
   CircularLayoutOptions,
   CircularLayoutResult,
+  GroupBand,
+  GroupBox,
+  GroupPadding,
+  GroupShape,
   LayoutEdgeInput,
+  LayoutGroupInput,
   LayoutNodeInput,
   PlacedNode,
   Point,

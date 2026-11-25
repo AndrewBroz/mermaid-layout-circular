@@ -318,3 +318,19 @@ update the README beside it.
   subgraphs take the same path as before. This needs a release of
   layout-circular with group shapes; the lockfile moves to that commit
   once it merges.
+- **2026-11-25 — The README leads with the picture, and the pictures
+  come from this repo.** The README now opens with what the layout
+  does and one picture, then the family table, install and setup.
+  The showcase follows setup, as a grid, and every picture's source
+  moves to `docs/GALLERY.md`. README pictures are rendered by
+  `npm run docs:images` (`scripts/render-docs.mjs`, which screenshots
+  `demo/docs.html` in the installed Chrome through `playwright-core`)
+  with the repo's mermaid 12.3, at 2x, on a white card with a thin
+  grey border, rendered on macOS so every picture uses the same fonts.
+  They replace the 11.12 renders borrowed from andrewbroz.net: the repo
+  can now reproduce them on its own, and 12.x is what new users
+  install. Each picture is a demo case with a `doc` name, so a picture
+  and its case can't drift apart. mermaid 12.3 draws wider boxes than
+  11.12, so the showcase grid shows each picture at half its natural
+  width, cells of unequal width, to keep its text readable. `CLAUDE.md`
+  is no longer a symlink to the README; it holds the agent's own rules.

@@ -33,4 +33,24 @@ describe('layoutOptionsFor', () => {
     expect(layoutOptionsFor({}, 'circular-ccw').direction).toBe('counterclockwise');
     expect(layoutOptionsFor({}, 'circular').direction).toBe('clockwise');
   });
+
+  it('maps flowchart.curve: linear to straight edges', () => {
+    expect(layoutOptionsFor({ flowchart: { curve: 'linear' } })).toEqual({
+      tail: 10,
+      edges: 'straight',
+    });
+  });
+
+  it('keeps the arcs for every other curve', () => {
+    for (const curve of ['basis', 'cardinal', 'step', 'natural'] as const) {
+      expect(layoutOptionsFor({ flowchart: { curve } }), curve).toEqual({ tail: 10 });
+    }
+  });
+
+  it('lets curve: linear outrank edges set in code, and combine with ccw', () => {
+    setCircularLayoutOptions({ edges: 'arc' });
+    const options = layoutOptionsFor({ flowchart: { curve: 'linear' } }, 'circular-ccw');
+    expect(options.edges).toBe('straight');
+    expect(options.direction).toBe('counterclockwise');
+  });
 });

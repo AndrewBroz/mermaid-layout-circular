@@ -55,7 +55,8 @@ const labelSize = (edge: LayoutEdge) => edge as { width?: number; height?: numbe
 /**
  * The options handed to the placement math, lowest precedence first:
  * what mermaid itself needs, then what mermaid's config says, then
- * what the consumer set in code, then the diagram's own layout name.
+ * what the consumer set in code, then the diagram's own layout name
+ * and curve.
  */
 export const layoutOptionsFor = (
   config: LayoutData['config'],
@@ -72,6 +73,9 @@ export const layoutOptionsFor = (
     // The diagram picked circular-ccw by name in its own frontmatter —
     // the most local signal there is, so it outranks options set in code.
     ...(algorithm === 'circular-ccw' && { direction: 'counterclockwise' as const }),
+    // `curve` already means edge shape, so a linear curve draws
+    // straight edges. Every other curve keeps the arcs.
+    ...(config.flowchart?.curve === 'linear' && { edges: 'straight' as const }),
   };
 };
 

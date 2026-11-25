@@ -136,10 +136,13 @@ const defaults = {
  * Counter-clockwise is clockwise seen in a mirror. The solver always
  * works clockwise — its sequential ring laying, mirror-pair
  * symmetrization and arc sweeps all assume it — and the finished
- * geometry is reflected across the vertical axis, which the ring is
- * already symmetric about. Reflection preserves every distance, so no
- * spacing or collision guarantee needs re-proving. `|| 0` keeps -0
- * from flipping atan2 to π on axis-bound points.
+ * geometry is reflected across the vertical axis. That axis, unlike
+ * an arbitrary one, maps every axis-aligned box onto itself, so the
+ * edge ends stay on their borders. Reflection preserves every
+ * distance, so no spacing or collision guarantee needs re-proving.
+ * `|| 0` keeps -0 from flipping atan2 to π on axis-bound points.
+ * Points are replaced, not negated in place, because one path can
+ * hold the same point object twice.
  */
 const mirrored = (result: CircularLayoutResult): CircularLayoutResult => {
   for (const node of result.nodes) {
@@ -147,9 +150,7 @@ const mirrored = (result: CircularLayoutResult): CircularLayoutResult => {
     node.angle = Math.atan2(node.y, node.x);
   }
   for (const edge of result.edges) {
-    for (const point of edge.points) {
-      point.x = -point.x || 0;
-    }
+    edge.points = edge.points.map((p) => ({ x: -p.x || 0, y: p.y }));
   }
   for (const satellite of result.satellites ?? []) {
     satellite.center.x = -satellite.center.x || 0;
@@ -181,17 +182,32 @@ const extent = (n: LayoutNodeInput, dir: Point): number => {
 
 /** The silhouette's largest half-extent over every direction: the
  *  safe radius of the node whatever its orientation. */
-const footprint = (n: LayoutNodeInput) => {
-  switch (n.shape) {
-    case 'ellipse':
-    case 'diamond':
-      return Math.max(n.width, n.height) / 2;
-    case 'stadium':
-      return Math.max(n.width, n.height) / 2;
-    default:
-      return Math.hypot(n.width, n.height) / 2;
+const footprint = (n: LayoutNodeInput): number =>
+  n.shape === undefined || n.shape === 'box'
+    ? Math.hypot(n.width, n.height) / 2
+    : Math.max(n.width, n.height) / 2;
+
+/** Append to the list kept under `key`, creating it on first use. */
+const pushTo = <K, V>(map: Map<K, V[]>, key: K, value: V): void => {
+  const list = map.get(key);
+  if (list) {
+    list.push(value);
+  } else {
+    map.set(key, [value]);
   }
 };
+
+/** Steps between two ring seats, the short way round. */
+const ringSteps = (i: number, j: number, n: number): number => {
+  const gap = Math.abs(i - j);
+  return Math.min(gap, n - gap);
+};
+
+/** One key per unordered pair of node ids. */
+const pairKey = (a: string, b: string): string => [a, b].sort().join(' ');
+
+/** Pixels between concentric sibling arcs that share both ends. */
+const SIBLING_STEP = 24;
 
 /** Room a subgraph box's wall claims beyond its member's border. */
 const GROUP_PAD = 16;
@@ -225,11 +241,7 @@ const orderRim = (rimNodes: LayoutNodeInput[], rimEdges: LayoutEdgeInput[]): str
 
   const membersOf = new Map<string, string[]>();
   for (const n of rimNodes) {
-    const key = superOf(n.id);
-    if (!membersOf.has(key)) {
-      membersOf.set(key, []);
-    }
-    membersOf.get(key)!.push(n.id);
+    pushTo(membersOf, superOf(n.id), n.id);
   }
 
   const out: string[] = [];
@@ -350,8 +362,7 @@ const followEdges = (nodes: LayoutNodeInput[], edges: LayoutEdgeInput[]): string
       if (p === undefined || q === undefined || e.start === e.end) {
         continue;
       }
-      const gap = Math.abs(p - q);
-      if (Math.min(gap, order.length - gap) === 1) {
+      if (ringSteps(p, q, order.length) === 1) {
         score++;
       }
     }
@@ -493,39 +504,38 @@ const unit = (v: Point): Point => {
 const densityOf = (length: number, cap: number) =>
   Math.max(8, Math.min(cap, Math.round(length / 10)));
 
-/** A quadratic Bézier, sampled evenly. */
-const quadratic = (p0: Point, c: Point, p3: Point, cap: number): Point[] => {
-  const approxLength = Math.hypot(c.x - p0.x, c.y - p0.y) + Math.hypot(p3.x - c.x, p3.y - c.y);
+/** A Bézier curve, sampled evenly in t. The control polygon's length
+ *  stands in for the curve's when choosing the sample count. */
+const bezier = (controls: Point[], cap: number): Point[] => {
+  let approxLength = 0;
+  for (let i = 1; i < controls.length; i++) {
+    const [a, b] = [controls[i - 1]!, controls[i]!];
+    approxLength += Math.hypot(b.x - a.x, b.y - a.y);
+  }
   const samples = densityOf(approxLength, cap);
   const points: Point[] = [];
   for (let i = 0; i <= samples; i++) {
+    // De Casteljau: repeated linear interpolation down to one point.
     const t = i / samples;
-    const u = 1 - t;
-    points.push({
-      x: u * u * p0.x + 2 * u * t * c.x + t * t * p3.x,
-      y: u * u * p0.y + 2 * u * t * c.y + t * t * p3.y,
-    });
+    let level = controls;
+    while (level.length > 1) {
+      level = level.slice(1).map((p, k) => ({
+        x: level[k]!.x + (p.x - level[k]!.x) * t,
+        y: level[k]!.y + (p.y - level[k]!.y) * t,
+      }));
+    }
+    points.push(level[0]!);
   }
   return points;
 };
 
-/** A cubic Bézier, sampled evenly. */
-const cubic = (p0: Point, c1: Point, c2: Point, p3: Point, cap: number): Point[] => {
-  const approxLength =
-    Math.hypot(c1.x - p0.x, c1.y - p0.y) +
-    Math.hypot(c2.x - c1.x, c2.y - c1.y) +
-    Math.hypot(p3.x - c2.x, p3.y - c2.y);
-  const samples = densityOf(approxLength, cap);
-  const points: Point[] = [];
-  for (let i = 0; i <= samples; i++) {
-    const t = i / samples;
-    const u = 1 - t;
-    points.push({
-      x: u * u * u * p0.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * p3.x,
-      y: u * u * u * p0.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * p3.y,
-    });
-  }
-  return points;
+/** A self-loop: a petal reaching outward from `pos`, which lies on
+ *  the ray from the origin at `angle`. Its two control points sit
+ *  0.45 rad (about 26°) either side of that ray. */
+const petal = (pos: Point, angle: number, box: BoxAt, reach: number, cap: number): Point[] => {
+  const tipRadius = Math.hypot(pos.x, pos.y) + reach;
+  const controls = [pos, onCircle(tipRadius, angle - 0.45), onCircle(tipRadius, angle + 0.45), pos];
+  return throughBorders(bezier(controls, cap), box, box);
 };
 
 /** What the node claims of the circle at its seat: its extent along
@@ -550,16 +560,7 @@ const peel = (
   nodes: LayoutNodeInput[],
   edges: LayoutEdgeInput[]
 ): { rim: Set<string>; childrenOf: Map<string, string[]> } => {
-  const neighborsOf = new Map<string, Set<string>>();
-  for (const node of nodes) {
-    neighborsOf.set(node.id, new Set());
-  }
-  for (const e of edges) {
-    if (e.start !== e.end && neighborsOf.has(e.start) && neighborsOf.has(e.end)) {
-      neighborsOf.get(e.start)!.add(e.end);
-      neighborsOf.get(e.end)!.add(e.start);
-    }
-  }
+  const nbrs = neighborsOf(nodes, edges);
   const rim = new Set(nodes.map((n) => n.id));
   const childrenOf = new Map<string, string[]>();
   let peeled = true;
@@ -569,14 +570,10 @@ const peel = (
       if (!rim.has(node.id)) {
         continue;
       }
-      const live = [...neighborsOf.get(node.id)!].filter((nb) => rim.has(nb));
+      const live = [...nbrs.get(node.id)!].filter((nb) => rim.has(nb));
       if (live.length === 1) {
         rim.delete(node.id);
-        const parent = live[0]!;
-        if (!childrenOf.has(parent)) {
-          childrenOf.set(parent, []);
-        }
-        childrenOf.get(parent)!.push(node.id);
+        pushTo(childrenOf, live[0]!, node.id);
         peeled = true;
       }
     }
@@ -715,21 +712,30 @@ const findHub = (nodes: LayoutNodeInput[], edges: LayoutEdgeInput[]): string | u
   const nbrs = neighborsOf(nodes, edges);
   const { rim } = peel(nodes, edges);
 
-  if (rim.size >= 3) {
+  // The id with strictly the highest count, or undefined on a tie.
+  const busiest = (ids: Iterable<string>, count: (id: string) => number) => {
     let best: string | undefined;
-    let bestCount = 0;
+    let most = 0;
     let tied = false;
-    for (const id of rim) {
-      const count = [...nbrs.get(id)!].filter((nb) => rim.has(nb)).length;
-      if (count > bestCount) {
+    for (const id of ids) {
+      const c = count(id);
+      if (c > most) {
         best = id;
-        bestCount = count;
+        most = c;
         tied = false;
-      } else if (count === bestCount) {
+      } else if (c === most) {
         tied = true;
       }
     }
-    if (!best || tied || bestCount < 3) {
+    return { best: tied ? undefined : best, most };
+  };
+
+  if (rim.size >= 3) {
+    const { best, most: bestCount } = busiest(
+      rim,
+      (id) => [...nbrs.get(id)!].filter((nb) => rim.has(nb)).length
+    );
+    if (best === undefined || bestCount < 3) {
       return undefined;
     }
     // The dominant fan: a node adjacent to EVERY other rim member is
@@ -748,19 +754,24 @@ const findHub = (nodes: LayoutNodeInput[], edges: LayoutEdgeInput[]): string | u
     return wholeWithoutIt && rest.size >= 3 ? best : undefined;
   }
 
-  let best: string | undefined;
-  let most = 0;
-  let tied = false;
-  for (const [id, set] of nbrs) {
-    if (set.size > most) {
-      best = id;
-      most = set.size;
-      tied = false;
-    } else if (set.size === most && set.size > 0) {
-      tied = true;
-    }
+  const { best, most } = busiest(nbrs.keys(), (id) => nbrs.get(id)!.size);
+  return most >= 3 ? best : undefined;
+};
+
+/** The hub option applied to a graph: none, detected, or a named
+ *  node that the graph actually holds. */
+const resolveHub = (
+  hub: Required<CircularLayoutOptions>['hub'],
+  nodes: LayoutNodeInput[],
+  edges: LayoutEdgeInput[]
+): string | undefined => {
+  if (hub === 'none') {
+    return undefined;
   }
-  return best !== undefined && !tied && most >= 3 ? best : undefined;
+  if (hub === 'auto') {
+    return findHub(nodes, edges);
+  }
+  return nodes.some((n) => n.id === hub) ? hub : undefined;
 };
 
 /**
@@ -805,10 +816,7 @@ const ringAroundHub = (
       if (current === hubId) {
         rim.add(next);
       } else {
-        if (!childrenOf.has(current)) {
-          childrenOf.set(current, []);
-        }
-        childrenOf.get(current)!.push(next);
+        pushTo(childrenOf, current, next);
       }
       queue.push(next);
     }
@@ -834,8 +842,18 @@ export const circularLayout = (
     Object.entries(options).filter(([, value]) => value !== undefined)
   ) as CircularLayoutOptions;
   const { direction, ...ringOptions } = { ...defaults, ...given };
-  const result = layoutRing(nodes, edges, ringOptions, undefined);
-  return direction === 'counterclockwise' ? mirrored(result) : result;
+  if (direction === 'counterclockwise') {
+    // The mirror sends angle φ to π − φ, so solving at π − startAngle
+    // lands the first node back on startAngle.
+    const solved = layoutRing(
+      nodes,
+      edges,
+      { ...ringOptions, startAngle: Math.PI - ringOptions.startAngle },
+      undefined
+    );
+    return mirrored(solved);
+  }
+  return layoutRing(nodes, edges, ringOptions, undefined);
 };
 
 /**
@@ -858,6 +876,9 @@ const layoutRing = (
   reversed = false
 ): CircularLayoutResult => {
   const { spacing, startAngle, ordering, bow, swerve, samples, hub } = opts;
+  // The gap between a node and what hangs off it radially: 80% of
+  // the rim spacing.
+  const spurGap = spacing * 0.8;
 
   if (nodes.length === 0) {
     return { nodes: [], edges: [], order: [], radius: 0 };
@@ -873,15 +894,8 @@ const layoutRing = (
           return { ...e, points: [], onRim: false };
         }
         // A self-loop on a lone node: a petal reaching upward, the
-        // same gesture as on a ring, anchored by mermaid on the border.
-        const t1 = { x: -reach * Math.sin(0.45), y: -reach * Math.cos(0.45) };
-        const t2 = { x: reach * Math.sin(0.45), y: -reach * Math.cos(0.45) };
-        const origin = { x: 0, y: 0 };
-        return {
-          ...e,
-          points: throughBorders(cubic(origin, t1, t2, origin, samples), home, home),
-          onRim: false,
-        };
+        // same gesture as on a ring.
+        return { ...e, points: petal(home, -Math.PI / 2, home, reach, samples), onRim: false };
       }),
       order: [only.id],
       radius: 0,
@@ -1007,7 +1021,7 @@ const layoutRing = (
       const aDist = Math.hypot(anchorProbe.x, anchorProbe.y);
       const home =
         aDist > 0 ? { x: anchorProbe.x / aDist, y: anchorProbe.y / aDist } : { x: 0, y: -1 };
-      const rimAt = aDist + (tangent ? 0 : spacing * 0.8);
+      const rimAt = aDist + (tangent ? 0 : spurGap);
       // How deep the band reaches: as far out as a ring box can — its
       // footprint. Breathing room is not part of the band; the gap
       // equation and the claim's own spacing already pay for it, and
@@ -1057,14 +1071,7 @@ const layoutRing = (
     // anchored to the very node that would take the center.
     const mainRimNodes = nodes.filter((n) => rim.has(n.id));
     const mainRimEdges = edges.filter((e) => rim.has(e.start) && rim.has(e.end));
-    const axle =
-      hub === 'none'
-        ? undefined
-        : hub === 'auto'
-          ? findHub(mainRimNodes, mainRimEdges)
-          : rim.has(hub)
-            ? hub
-            : undefined;
+    const axle = resolveHub(hub, mainRimNodes, mainRimEdges);
     if (axle !== undefined && !satellitePlans.some((plan) => plan.anchor === axle)) {
       hubId = axle;
       rim.delete(axle);
@@ -1083,14 +1090,7 @@ const layoutRing = (
     // origin and rings everything else. Otherwise the ring is the
     // 2-core with trees hanging off as spurs, and a ring thinner
     // than three nodes keeps everything on the ring as before.
-    hubId =
-      hub === 'none'
-        ? undefined
-        : hub === 'auto'
-          ? findHub(nodes, edges)
-          : byId.has(hub)
-            ? hub
-            : undefined;
+    hubId = resolveHub(hub, nodes, edges);
     if (hubId !== undefined) {
       ({ rim, childrenOf } = ringAroundHub(nodes, edges, hubId));
     } else {
@@ -1103,15 +1103,12 @@ const layoutRing = (
   }
   const hubNode = hubId === undefined ? undefined : byId.get(hubId);
 
-  // For spacing, a satellite is one more thing its anchor carries —
-  // but only as wide as what it pushes into the ring's own band.
-  const satWidthsOf = new Map<string, number[]>();
+  // Satellites grouped by the ring node they hang from.
+  const plansByAnchor = new Map<string, SatellitePlan[]>();
   for (const plan of satellitePlans) {
-    if (!satWidthsOf.has(plan.anchor)) {
-      satWidthsOf.set(plan.anchor, []);
-    }
-    satWidthsOf.get(plan.anchor)!.push(plan.claimWidth);
+    pushTo(plansByAnchor, plan.anchor, plan);
   }
+
   const rimNodes = nodes.filter((n) => rim.has(n.id));
   const rimEdges = edges.filter((e) => rim.has(e.start) && rim.has(e.end));
 
@@ -1156,10 +1153,16 @@ const layoutRing = (
     if (kids.length === 0) {
       return own;
     }
-    const kidsWidth =
-      kids.reduce((sum, kid) => sum + treeWidth(kid, angle), 0) + (kids.length - 1) * spacing;
-    return Math.max(own, kidsWidth);
+    return Math.max(own, forestWidth(id, angle));
   };
+  // Width of a node's spur forest, children side by side.
+  const forestWidth = (id: string, angle: number): number => {
+    const kids = childrenOf.get(id) ?? [];
+    return (
+      kids.reduce((sum, kid) => sum + treeWidth(kid, angle), 0) + (kids.length - 1) * spacing
+    );
+  };
+
   const effectiveExtent = (id: string, angle: number): number => {
     const kids = childrenOf.get(id) ?? [];
     // A grouped node's box wall stands one pad beyond its border, and
@@ -1168,7 +1171,9 @@ const layoutRing = (
     const own = tangentialExtent(self, angle) + (self.group !== undefined ? GROUP_PAD : 0);
     const carried = [
       ...kids.map((kid) => treeWidth(kid, angle)),
-      ...(satWidthsOf.get(id) ?? []),
+      // A satellite is one more thing its anchor carries, but only as
+      // wide as what it pushes into the ring's own band.
+      ...(plansByAnchor.get(id) ?? []).map((plan) => plan.claimWidth),
     ];
     if (carried.length === 0) {
       return own;
@@ -1188,8 +1193,7 @@ const layoutRing = (
     if (pi === undefined || pj === undefined || !e.labelWidth) {
       continue;
     }
-    const stepGap = Math.abs(pi - pj);
-    if (Math.min(stepGap, nRim - stepGap) === 1 || nRim === 2) {
+    if (ringSteps(pi, pj, nRim) === 1 || nRim === 2) {
       // The renderer demands 32px of breathing room around a label,
       // and the gap is arc length while the collision check measures
       // straight-line distance, so the widening carries extra slack
@@ -1209,15 +1213,17 @@ const layoutRing = (
     if (!e.labelWidth) {
       continue;
     }
-    const key = [e.start, e.end].sort().join('|');
+    const key = pairKey(e.start, e.end);
     const prev = pairLabel.get(key) ?? { w: 0, h: 0 };
     pairLabel.set(key, {
       w: Math.max(prev.w, e.labelWidth),
+      // Without a measured height, assume one line of mermaid's
+      // default 16px label text.
       h: Math.max(prev.h, e.labelHeight ?? 20),
     });
   }
   const radialLabelNeed = (a: string, b: string, angle: number): number => {
-    const label = pairLabel.get([a, b].sort().join('|'));
+    const label = pairLabel.get(pairKey(a, b));
     if (!label) {
       return 0;
     }
@@ -1270,8 +1276,7 @@ const layoutRing = (
         const pj = onCircle(radius, angles[j]!);
         const between = Math.hypot(pj.x - pi.x, pj.y - pi.y);
         const dir = unit({ x: pj.x - pi.x, y: pj.y - pi.y });
-        const stepGap = Math.min(j - i, nRim - (j - i));
-        const margin = stepGap === 1 ? 2 : spacing / 2;
+        const margin = ringSteps(i, j, nRim) === 1 ? 2 : spacing / 2;
         const need =
           extent(byId.get(order[i]!)!, dir) +
           extent(byId.get(order[j]!)!, dir) +
@@ -1299,11 +1304,11 @@ const layoutRing = (
         }
       }
     }
+    // A 0.1% overshoot is invisible, so it counts as settled. The
+    // first rounds always run: the extents still move with the angles.
     if (scale > 1.001) {
       radius *= scale;
-      continue;
-    }
-    if (round > 4 && scale <= 1.001) {
+    } else if (round > 4) {
       break;
     }
   }
@@ -1317,23 +1322,45 @@ const layoutRing = (
     posOf.set(hubId, { x: 0, y: 0 });
   }
 
+  // A ring node carrying both spurs and satellites splits its fan:
+  // the spur forest on one side of its ray, the satellites on the
+  // other, a spacing apart, the way effectiveExtent reserved them.
+  // Each shift is the sideways offset, in pixels, of that group's
+  // center from the ray.
+  const fanShifts = (id: string, angle: number): { spurs: number; satellites: number } => {
+    const plans = plansByAnchor.get(id) ?? [];
+    if (plans.length === 0 || !childrenOf.has(id)) {
+      return { spurs: 0, satellites: 0 };
+    }
+    const spursWidth = forestWidth(id, angle);
+    const satsWidth =
+      plans.reduce((sum, plan) => sum + 2 * plan.discR, 0) + (plans.length - 1) * spacing;
+    const total = spursWidth + spacing + satsWidth;
+    return { spurs: (spursWidth - total) / 2, satellites: (total - satsWidth) / 2 };
+  };
+
   // Hang each spur tree radially outward from its attachment,
-  // children fanned side by side across the parent's angle.
-  const placeChildren = (parentId: string, parentAngle: number, parentOuterRadius: number) => {
+  // children fanned side by side across the parent's angle, their
+  // fan centered `shift` pixels to the side of it.
+  const placeChildren = (
+    parentId: string,
+    parentAngle: number,
+    parentOuterRadius: number,
+    shift = 0
+  ) => {
     const kids = childrenOf.get(parentId) ?? [];
     if (kids.length === 0) {
       return;
     }
     const widths = kids.map((kid) => treeWidth(kid, parentAngle));
-    const total = widths.reduce((a, b) => a + b, 0) + (kids.length - 1) * spacing;
-    let cursor = -total / 2;
+    let cursor = shift - forestWidth(parentId, parentAngle) / 2;
     for (const [i, kid] of kids.entries()) {
       const node = byId.get(kid)!;
       const centerOffset = cursor + widths[i]! / 2;
       cursor += widths[i]! + spacing;
       const kidRadius =
         parentOuterRadius +
-        Math.max(spacing * 0.8, radialLabelNeed(parentId, kid, parentAngle)) +
+        Math.max(spurGap, radialLabelNeed(parentId, kid, parentAngle)) +
         radialExtent(node, parentAngle);
       const kidAngle = parentAngle + centerOffset / kidRadius;
       posOf.set(kid, onCircle(kidRadius, kidAngle));
@@ -1342,7 +1369,12 @@ const layoutRing = (
   };
   for (const id of order) {
     const angle = angleOf.get(id)!;
-    placeChildren(id, angle, radius + radialExtent(byId.get(id)!, angle));
+    placeChildren(
+      id,
+      angle,
+      radius + radialExtent(byId.get(id)!, angle),
+      fanShifts(id, angle).spurs
+    );
   }
 
   // Park each satellite on its anchor's ray. The probe solve above
@@ -1358,22 +1390,14 @@ const layoutRing = (
   // take neighboring rays, which preserves that tangency.
   const satellites: SatelliteRing[] = [];
   const satRouted = new Map<string, RoutedEdge>();
-  const plansByAnchor = new Map<string, SatellitePlan[]>();
-  for (const plan of satellitePlans) {
-    if (!plansByAnchor.has(plan.anchor)) {
-      plansByAnchor.set(plan.anchor, []);
-    }
-    plansByAnchor.get(plan.anchor)!.push(plan);
-  }
   for (const [anchorId, plans] of plansByAnchor) {
     const theta = angleOf.get(anchorId)!;
     const anchorPos = posOf.get(anchorId)!;
     const anchorNode = byId.get(anchorId)!;
+    const shift = fanShifts(anchorId, theta).satellites;
     for (const [k, plan] of plans.entries()) {
       const swing =
-        plans.length === 1
-          ? 0
-          : ((k - (plans.length - 1) / 2) * (2 * plan.discR + spacing)) / radius;
+        (shift + (k - (plans.length - 1) / 2) * (2 * plan.discR + spacing)) / radius;
       const ray = theta + swing;
       const sub = layoutRing(
         plan.subNodes,
@@ -1392,7 +1416,7 @@ const layoutRing = (
         : onCircle(
             radius +
               radialExtent(anchorNode, theta) +
-              Math.max(spacing * 0.8, radialLabelNeed(anchorId, plan.subAnchor, ray)) +
+              Math.max(spurGap, radialLabelNeed(anchorId, plan.subAnchor, ray)) +
               radialExtent(byId.get(plan.subAnchor)!, ray) +
               aDist,
             ray
@@ -1440,7 +1464,7 @@ const layoutRing = (
   const pairIndex = new Map<string, number>();
   const pairCount = new Map<string, number>();
   const pairKeyOf = (e: LayoutEdgeInput) =>
-    nRim === 2 ? `${e.start}>${e.end}` : [e.start, e.end].sort().join(' ');
+    nRim === 2 ? `${e.start}>${e.end}` : pairKey(e.start, e.end);
   for (const e of edges) {
     pairCount.set(pairKeyOf(e), (pairCount.get(pairKeyOf(e)) ?? 0) + 1);
   }
@@ -1462,15 +1486,11 @@ const layoutRing = (
     if (e.start === e.end) {
       // A petal reaching outward from wherever the node sits — its
       // own radius and angle, whether on the rim or up a spur.
-      const home = boxAt(e.start);
-      const homeRadius = Math.hypot(pStart.x, pStart.y);
-      const homeAngle = Math.atan2(pStart.y, pStart.x);
       const reach = footprint(byId.get(e.start)!) + spacing;
-      const t1 = onCircle(homeRadius + reach, homeAngle - 0.45);
-      const t2 = onCircle(homeRadius + reach, homeAngle + 0.45);
+      const homeAngle = Math.atan2(pStart.y, pStart.x);
       return {
         ...e,
-        points: throughBorders(cubic(pStart, t1, t2, pStart, samples), home, home),
+        points: petal(pStart, homeAngle, boxAt(e.start), reach, samples),
         onRim: false,
       };
     }
@@ -1492,6 +1512,8 @@ const layoutRing = (
       const mid = { x: (pStart.x + pEnd.x) / 2, y: (pStart.y + pEnd.y) / 2 };
       const across = unit({ x: pEnd.y - pStart.y, y: -(pEnd.x - pStart.x) });
       const side = e.start < e.end ? 1 : -1;
+      // 18px of control offset per sibling: a quadratic's apex moves
+      // half its control offset, so siblings bow 9px apart.
       const control = {
         x: mid.x + across.x * spread * 18 * side,
         y: mid.y + across.y * spread * 18 * side,
@@ -1499,7 +1521,7 @@ const layoutRing = (
       return {
         ...e,
         points: throughBorders(
-          quadratic(pStart, control, pEnd, samples),
+          bezier([pStart, control, pEnd], samples),
           boxAt(e.start),
           boxAt(e.end)
         ),
@@ -1509,8 +1531,8 @@ const layoutRing = (
 
     const a = angleOf.get(e.start)!;
     const b = angleOf.get(e.end)!;
-    const gap = Math.abs(position.get(e.start)! - position.get(e.end)!);
-    const neighbors = Math.min(gap, nRim - gap) === 1 || nRim === 2;
+    const neighbors =
+      ringSteps(position.get(e.start)!, position.get(e.end)!, nRim) === 1 || nRim === 2;
 
     if (neighbors) {
       // One circle, drawn honestly: the edge is a true arc of the
@@ -1526,9 +1548,9 @@ const layoutRing = (
         0.6 * Math.min(boxA.width / 2, boxA.height / 2, boxB.width / 2, boxB.height / 2);
       // Scale the whole fan uniformly rather than clamping each
       // offset: clamping saturates, and saturated siblings coincide.
-      const widestSpread = ((siblings - 1) / 2) * 24;
+      const widestSpread = ((siblings - 1) / 2) * SIBLING_STEP;
       const fanScale = widestSpread > maxOffset ? maxOffset / widestSpread : 1;
-      const offset = spread * 24 * fanScale;
+      const offset = spread * SIBLING_STEP * fanScale;
       const arcRadius = radius + offset;
       // The target's angle expressed continuously from `a` — walking
       // back from its stored angle can sit across the ±π wrap and
@@ -1559,6 +1581,7 @@ const layoutRing = (
         ? { x: 0, y: 0 }
         : { x: (pb.y - pa.y) / chordLength, y: -(pb.x - pa.x) / chordLength };
     const slide = swerve * radius * centrality;
+    // Each further sibling bows 0.15 deeper toward the center.
     const control = {
       x: mid.x * (1 - (bow + spread * 0.15)) + left.x * slide,
       y: mid.y * (1 - (bow + spread * 0.15)) + left.y * slide,
@@ -1566,7 +1589,7 @@ const layoutRing = (
     return {
       ...e,
       points: throughBorders(
-        quadratic(pa, control, pb, samples),
+        bezier([pa, control, pb], samples),
         boxAt(e.start),
         boxAt(e.end)
       ),

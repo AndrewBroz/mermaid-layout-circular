@@ -300,7 +300,7 @@ from mermaid's own `flowchart.nodeSpacing`.
 
 ## Demo
 
-`npm run dev` serves the demo. The gallery at `/` renders ten cases, and
+`npm run dev` serves the demo. The gallery at `/` renders every case in `demo/cases.ts`, and
 `/trials.html?suite=bow` (also `swerve`, `ordering`, `spacing`,
 `samples`) renders the same diagrams under different option values for
 side-by-side comparison.

@@ -205,6 +205,19 @@ export const cases: Case[] = [
 `,
   },
   {
+    title: 'a spur and a satellite on one node — they share its fan side by side',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  P[Plan] --> B[Build] --> S[Ship] --> L[Learn] --> P
+  B --> D[Debug]
+  D --> F[Fix] --> T[Test] --> D
+  B --> Log[Build log]
+  S --> Notes[Release notes]
+`,
+  },
+  {
     title: 'a subgraph on the cycle — the box wraps one arc',
     wide: true,
     text:

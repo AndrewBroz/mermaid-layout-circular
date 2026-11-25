@@ -869,6 +869,19 @@ describe('satellite rings', () => {
     }
   });
 
+  it('hangs a spur and a satellite off one anchor side by side, never on top of each other', () => {
+    for (const graph of [bridge, eight]) {
+      const { nodes, satellites } = circularLayout(
+        [...graph.nodes, box('Leaf')],
+        [...graph.edges, edge('C', 'Leaf')]
+      );
+      const leaf = nodes.find((n) => n.id === 'Leaf')!;
+      const sat = satellites![0]!;
+      // Clear of the satellite's circle by more than half a box.
+      expect(dist(leaf, sat.center) - sat.radius).toBeGreaterThan(40);
+    }
+  });
+
   it('mirrors satellites along with everything else under ccw', () => {
     const cw = circularLayout(eight.nodes, eight.edges);
     const ccw = circularLayout(eight.nodes, eight.edges, { direction: 'counterclockwise' });
@@ -1064,6 +1077,18 @@ describe('direction', () => {
     expect(top.y).toBeLessThan(0);
     expect(byId.get(order[1]!)!.x).toBeLessThan(0);
     expect(byId.get(order[order.length - 1]!)!.x).toBeGreaterThan(0);
+  });
+
+  it('keeps the first node on a custom startAngle', () => {
+    const ids = ['A', 'B', 'C', 'D'];
+    for (const direction of ['clockwise', 'counterclockwise'] as const) {
+      const { nodes, order } = circularLayout(ids.map((id) => box(id)), cycle(...ids), {
+        startAngle: 0,
+        direction,
+      });
+      const first = nodes.find((n) => n.id === order[0])!;
+      expect(first.angle, direction).toBeCloseTo(0, 6);
+    }
   });
 
   it('keeps a lone node centered, its angle untouched by the mirror', () => {

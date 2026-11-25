@@ -219,3 +219,20 @@ update the README beside it.
   the three gates and by rendering the gallery and the bow and samples
   trials against 12.3.0: every case drew, no NaN, no console errors.
   The 11.12.0 floor stays.
+- **2026-11-25 — A spur and a satellite on one node split its fan.**
+  `effectiveExtent` already reserved ring room for a node's spur
+  forest and its satellites side by side, but placement put both on
+  the node's own ray. A bridge satellite's landing node then drew
+  exactly on top of the spur leaf (`trials/spur-satellite-before.png`:
+  Build log hides Debug). Now the spur forest takes one side of the
+  ray and the satellites the other, a spacing apart
+  (`trials/spur-satellite-after.png`). Nodes carrying only one of the
+  two place exactly as before; the gallery's other cases render
+  unchanged. Same pass: counter-clockwise now honors a custom
+  `startAngle`. The solve runs at π − startAngle and the vertical
+  mirror brings the first node back, because a mirror across any
+  other axis would turn axis-aligned boxes. Known corners left open: a
+  self-loop on a figure-eight waist points into the main ring, an
+  explicit `hub` naming an off-ring node is ignored silently once the
+  graph has a cycle, and a colliding label on a satellite's rim
+  slides outward from the main center, not the satellite's.

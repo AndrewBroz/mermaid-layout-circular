@@ -29,6 +29,15 @@ export const cases: Case[] = [
     text: frontmatter('circular-ccw') + waterCycle,
   },
   {
+    title: 'straight edges — flowchart.curve: linear draws the ring as a polygon',
+    text:
+      frontmatter('circular', '  flowchart:\n    curve: linear\n') +
+      `flowchart LR
+  A[Plan] -->|then| B[Build] --> C[Ship] --> A
+  C --> B
+`,
+  },
+  {
     title: 'hand-drawn look — the dress andrewbroz.net will wear',
     text:
       frontmatter('circular', '  look: handDrawn\n  theme: neutral\n') +

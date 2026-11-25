@@ -246,6 +246,25 @@ Setting `direction: 'counterclockwise'` in the options (below) does the
 same for diagrams that say `layout: circular`. The frontmatter declaration
 takes precedence.
 
+For straight edges, set mermaid's own `flowchart.curve` to `linear`:
+
+```
+---
+config:
+  layout: circular
+  flowchart:
+    curve: linear
+---
+flowchart LR
+  A[Plan] --> B[Build] --> C[Ship] --> A
+```
+
+Each edge between ring nodes is then a straight line from border to
+border, so a three-cycle reads as a triangle. Chords lose their bow,
+and two opposite edges become two parallel lines. Placement does not
+change. Only `linear` selects straight edges. Every other curve keeps
+the arcs. It works with `circular-ccw` too.
+
 Subgraphs:
 
 ```

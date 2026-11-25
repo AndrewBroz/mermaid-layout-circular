@@ -260,3 +260,17 @@ update the README beside it.
   fetches it over HTTPS and runs its `prepare` script, which builds
   it, so CI can install it and nothing needs building by hand. The
   lockfile pins the commit.
+- **2026-11-25 — `curve: linear` draws straight edges.** A diagram
+  whose config sets `flowchart.curve: linear` gets layout-circular's
+  `edges: 'straight'`. The ring becomes a polygon, and a three-cycle a
+  triangle. The owner chose mermaid's existing knob over a new layout
+  name, for the reasons recorded in layout-circular's DECISIONS. The
+  seam reads it from `data4Layout.config.flowchart.curve`: mermaid's
+  flowchart `getData` hands the merged config there, frontmatter
+  included, and the default is `basis`. Only `linear` maps; every
+  other curve keeps the arcs. Like `circular-ccw`, the diagram's own
+  config outranks options set in code. Mermaid then draws the points
+  with its linear curve, so the segments stay straight. A per-edge
+  curve and `linkStyle default interpolate linear` are not read. The
+  demo gallery has a case. This needs a release of layout-circular
+  with the `edges` option.

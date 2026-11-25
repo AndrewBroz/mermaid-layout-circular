@@ -277,8 +277,13 @@ than flowcharts are out of scope.
 
 To use the layout in Obsidian, install
 [obsidian-mermaid-circular](https://github.com/AndrewBroz/obsidian-mermaid-circular),
-a small plugin that registers it with the mermaid instance Obsidian
-already bundles. Usage is as described here once installed.
+a small plugin that adds circular layouts to Mermaid flowcharts.
+Since 1.15, Obsidian renders Mermaid with Pele, not mermaid. The plugin
+steps in only for diagrams that ask for a circular layout. Pele's
+counterpart to this package is
+[pele-layout-circular](https://github.com/AndrewBroz/pele-layout-circular).
+This package's options are for code that calls mermaid itself, not for
+Obsidian.
 
 ## Options
 

@@ -53,7 +53,3 @@ Already satisfied on the plugin repo: release tags match
 `id`/`name` follow the naming rules, LICENSE and README present.
 The PR text and any exchanges with reviewers are written by the
 author, not generated.
-
-After the npm package exists, the plugin's dependency moves from
-`github:AndrewBroz/mermaid-layout-circular` to the npm semver range,
-which retires the `allowScripts` commit-hash pin.

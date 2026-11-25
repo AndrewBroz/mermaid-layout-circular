@@ -58,8 +58,11 @@ const suites: Record<string, Variant[]> = {
 };
 
 const params = new URLSearchParams(location.search);
-const suiteName = params.get('suite') ?? 'ordering';
-const suite = suites[suiteName] ?? suites.ordering!;
+const asked = params.get('suite') ?? 'ordering';
+// An unknown suite, such as the removed bow or swerve, falls back to
+// ordering, and the heading names the suite actually shown.
+const suiteName = Object.hasOwn(suites, asked) ? asked : 'ordering';
+const suite = suites[suiteName]!;
 document.querySelector('#heading')!.textContent = `trials — ${suiteName}`;
 
 const rows = document.querySelector('#rows')!;

@@ -327,15 +327,17 @@ that holds the placement math. Every default was chosen by
 rendering the alternatives and looking at them. The screenshots that
 drove those choices are committed in `trials/`, and the verdicts are
 recorded in `docs/DECISIONS.md`. The bow and swerve trials there are
-history: those options were removed when chords became straight. When no option overrides it, `spacing`
-is seeded from mermaid's own `flowchart.nodeSpacing`. This package sets
-`tail` to 10, to clear mermaid's marker handling.
+history: those options were removed when chords became straight.
+When no option overrides it, `spacing` is seeded from mermaid's own
+`flowchart.nodeSpacing`. This package sets `tail` to 10, to clear
+mermaid's marker handling.
 
 ## Demo
 
-`npm run dev` serves the demo. The gallery at `/` renders every case in `demo/cases.ts`, and
-`/trials.html?suite=ordering` (also `spacing`, `samples`) renders the same diagrams under different option values for
-side-by-side comparison.
+`npm run dev` serves the demo. The gallery at `/` renders every case
+in `demo/cases.ts`, and `/trials.html?suite=ordering` (also `spacing`,
+`samples`) renders the same diagrams under different option values
+for side-by-side comparison.
 
 ## Development
 

@@ -16,6 +16,11 @@ One-time setup, in order:
 2. On npmjs.com: package → Settings → Trusted publisher → GitHub
    Actions, repository `AndrewBroz/mermaid-layout-circular`,
    workflow `release.yml`. After this, no tokens exist anywhere.
+3. Within 48 hours of saving the trusted publisher, publish a new
+   version from the workflow. npm marks the configuration as not yet
+   validated until a workflow run publishes with it. Re-running an
+   old tag doesn't count, because the workflow skips versions
+   already on the registry.
 
 ## Demo site
 

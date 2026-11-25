@@ -315,8 +315,9 @@ The build compiles it into this package's bundle, and its types into
 runtime. Changes to the math, its options and its tests go
 there. This repo keeps the mermaid seam: `src/render.ts` measures nodes
 and labels, hands them to the math, and draws the result through
-mermaid. For now the dependency is `file:../layout-circular`, so the
-two repos must sit side by side, and `layout-circular` must be built.
+mermaid. It installs from GitHub (`github:AndrewBroz/layout-circular`),
+and npm builds it on install. To work on both at once, `npm link` a
+local checkout of the core.
 
 Three gates, all green before committing changes to `src/`:
 

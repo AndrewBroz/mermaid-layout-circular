@@ -45,7 +45,7 @@
     "@types/node": "^22.20.7",
     "dts-bundle-generator": "^9.5.1",
     "eslint": "^10.8.0",
-    "layout-circular": "file:../layout-circular",
+    "layout-circular": "github:AndrewBroz/layout-circular",
     "mermaid": "^12.3.0",
     "typescript": "^5.9.0",
     "typescript-eslint": "^8.46.0",

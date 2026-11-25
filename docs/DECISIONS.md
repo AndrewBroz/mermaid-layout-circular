@@ -254,3 +254,9 @@ update the README beside it.
   identically before and after. Open: CI runs `npm ci`, which cannot
   resolve `file:../layout-circular` on GitHub. That waits on
   `layout-circular` getting a remote or an npm release.
+- **2026-11-25 — The core installs from GitHub.** `layout-circular` now
+  has a remote, so the devDependency is
+  `github:AndrewBroz/layout-circular` instead of a local path. npm
+  fetches it over HTTPS and runs its `prepare` script, which builds
+  it, so CI can install it and nothing needs building by hand. The
+  lockfile pins the commit.

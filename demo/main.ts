@@ -6,11 +6,9 @@ mermaid.registerLayoutLoaders(circularLayouts);
 mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
 
 const params = new URLSearchParams(location.search);
-const bow = params.get('bow');
 const ordering = params.get('ordering');
 const spacing = params.get('spacing');
 setCircularLayoutOptions({
-  ...(bow !== null && { bow: Number(bow) }),
   ...(ordering !== null && { ordering: ordering as 'follow-edges' | 'input' }),
   ...(spacing !== null && { spacing: Number(spacing) }),
 });

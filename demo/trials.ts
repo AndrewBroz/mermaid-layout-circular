@@ -42,17 +42,6 @@ interface Variant {
 }
 
 const suites: Record<string, Variant[]> = {
-  bow: [
-    { label: 'bow 0 — straight chords', options: { bow: 0 }, only: 'chords' },
-    { label: 'bow 0.35 — the default', options: { bow: 0.35 }, only: 'chords' },
-    { label: 'bow 0.6 — deep', options: { bow: 0.6 }, only: 'chords' },
-    { label: 'bow -0.4 — outward', options: { bow: -0.4 }, only: 'chords' },
-  ],
-  swerve: [
-    { label: 'swerve 0 — diameters stab the center', options: { swerve: 0 }, only: 'chords' },
-    { label: 'swerve 0.2', options: { swerve: 0.2 }, only: 'chords' },
-    { label: 'swerve 0.35 — wide braid', options: { swerve: 0.35 }, only: 'chords' },
-  ],
   ordering: [
     { label: 'follow-edges', options: { ordering: 'follow-edges' } },
     { label: 'input order', options: { ordering: 'input' } },
@@ -69,8 +58,11 @@ const suites: Record<string, Variant[]> = {
 };
 
 const params = new URLSearchParams(location.search);
-const suiteName = params.get('suite') ?? 'bow';
-const suite = suites[suiteName] ?? suites.bow!;
+const asked = params.get('suite') ?? 'ordering';
+// An unknown suite, such as the removed bow or swerve, falls back to
+// ordering, and the heading names the suite actually shown.
+const suiteName = Object.hasOwn(suites, asked) ? asked : 'ordering';
+const suite = suites[suiteName]!;
 document.querySelector('#heading')!.textContent = `trials — ${suiteName}`;
 
 const rows = document.querySelector('#rows')!;

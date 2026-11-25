@@ -1,5 +1,7 @@
 export interface Case {
   title: string;
+  /** The base name of this case's picture in docs/media, if it has one. */
+  doc?: string;
   wide?: boolean;
   text: string;
 }
@@ -18,14 +20,17 @@ const waterCycle = `flowchart LR
 export const cases: Case[] = [
   {
     title: 'a pure cycle — the water cycle, circular layout',
+    doc: 'water-cycle',
     text: frontmatter('circular') + waterCycle,
   },
   {
     title: 'the same diagram, dagre — what issue #3228 complains about',
+    doc: 'water-cycle-dagre',
     text: frontmatter('dagre') + waterCycle,
   },
   {
     title: 'the same cycle counter-clockwise — layout: circular-ccw',
+    doc: 'water-cycle-ccw',
     text: frontmatter('circular-ccw') + waterCycle,
   },
   {
@@ -39,6 +44,7 @@ export const cases: Case[] = [
   },
   {
     title: 'hand-drawn look — the dress andrewbroz.net will wear',
+    doc: 'hand-drawn',
     text:
       frontmatter('circular', '  look: handDrawn\n  theme: neutral\n') +
       `flowchart LR
@@ -62,6 +68,7 @@ export const cases: Case[] = [
   },
   {
     title: 'a chord shortcut and edge labels',
+    doc: 'daily-arcs',
     text:
       frontmatter('circular') +
       `flowchart LR
@@ -74,7 +81,34 @@ export const cases: Case[] = [
 `,
   },
   {
+    title: 'the same, with straight edges — flowchart.curve: linear',
+    doc: 'daily-straight',
+    text:
+      frontmatter('circular', '  flowchart:\n    curve: linear\n') +
+      `flowchart LR
+  W[Wake] -->|coffee| Wk[Work]
+  Wk -->|lunch| M[Meetings]
+  M -->|escape| F[Focus]
+  F -->|dusk| Hm[Home]
+  Hm -->|sleep| W
+  Wk -.->|skip the day| Hm
+`,
+  },
+  {
+    title: 'two straight edges between the same nodes — parallel lines, labels aside',
+    doc: 'parallel-lines',
+    text:
+      frontmatter('circular', '  flowchart:\n    curve: linear\n') +
+      `flowchart LR
+  A[Plan] -->|then| B[Build]
+  C[Ship] --> A
+  B -->|ready| C
+  C -->|fix| B
+`,
+  },
+  {
     title: 'mixed shapes and sizes — the radius listens to the widest node',
+    doc: 'mixed-shapes',
     text:
       frontmatter('circular') +
       `flowchart LR
@@ -87,6 +121,7 @@ export const cases: Case[] = [
   },
   {
     title: 'self-loop and an opposite edge',
+    doc: 'self-loop',
     text:
       frontmatter('circular') +
       `flowchart LR
@@ -95,6 +130,19 @@ export const cases: Case[] = [
   B --> C[Publish]
   C --> A
   A --> A
+`,
+  },
+  {
+    title: 'branches — nodes off the ring hang outward',
+    doc: 'branches',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  P[Plan] --> B[Build] --> S[Ship] --> L[Learn] --> P
+  I[Idea] --> P
+  S --> N[Release notes]
+  B --> G[Build log]
 `,
   },
   {
@@ -116,6 +164,7 @@ export const cases: Case[] = [
   },
   {
     title: 'a Krebs-style cycle with inputs and outputs',
+    doc: 'krebs',
     wide: true,
     text:
       frontmatter('circular') +
@@ -144,6 +193,7 @@ export const cases: Case[] = [
   },
   {
     title: 'a wheel missing a rim arc, meshing a gear — the axle holds anyway',
+    doc: 'captain-planet',
     wide: true,
     text:
       frontmatter('circular') +
@@ -202,6 +252,7 @@ export const cases: Case[] = [
   },
   {
     title: 'three gears — each loop spins against the one it meshes with',
+    doc: 'three-gears',
     wide: true,
     text:
       frontmatter('circular') +
@@ -215,6 +266,7 @@ export const cases: Case[] = [
   },
   {
     title: 'a spur and a satellite on one node — they share its fan side by side',
+    doc: 'spur-and-satellite',
     wide: true,
     text:
       frontmatter('circular') +
@@ -245,6 +297,7 @@ export const cases: Case[] = [
   },
   {
     title: 'a subgraph around a pendant cycle — the box wraps the satellite',
+    doc: 'group-satellite',
     wide: true,
     text:
       frontmatter('circular') +
@@ -254,6 +307,21 @@ export const cases: Case[] = [
   subgraph The debug loop
     D --> F[Fix] --> T[Test] --> D
   end
+`,
+  },
+  {
+    title: 'a small subgraph — a box, turned clear of the other nodes',
+    doc: 'lifecycle-box',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  I[Idea] --> S[Spec]
+  subgraph Make
+    B[Build]
+    T[Test]
+  end
+  S --> B --> T --> P[Ship] --> I
 `,
   },
   {
@@ -276,6 +344,7 @@ export const cases: Case[] = [
   },
   {
     title: 'a subgraph nested in a band is a band too, its title between the two',
+    doc: 'nested-band',
     wide: true,
     text:
       frontmatter('circular') +
@@ -291,6 +360,87 @@ export const cases: Case[] = [
   end
   P --> D --> C --> T --> R --> V[Review] --> P
   style CI fill:#ffd
+`,
+  },
+  {
+    title: 'spokes cross the top of a box — its title moves to the bottom',
+    doc: 'title-bottom',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  Hub[Registry] --> A[Alpha]
+  Hub --> B[Bravo]
+  Hub --> C[Charlie]
+  Hub --> D[Delta]
+  Hub --> E[Echo]
+  Hub --> F[Foxtrot]
+  subgraph Archive
+    C
+    D
+  end
+`,
+  },
+  {
+    title: 'a compact hub — three spokes, the README picture',
+    doc: 'hub',
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  Hub[Registry] --> A[Alpha]
+  Hub --> B[Bravo]
+  Hub --> C[Charlie]
+`,
+  },
+  {
+    title: 'a compact wheel — five on the ring, Vision at the axle',
+    doc: 'wheel',
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  A[Plan] --> B[Build] --> C[Test] --> D[Ship] --> E[Learn] --> A
+  A --> V[Vision]
+  B --> V
+  C --> V
+  D --> V
+  E --> V
+`,
+  },
+  {
+    title: 'a compact satellite — written from Build, so the debug loop rises above it',
+    doc: 'satellite',
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  B[Build] --> S[Ship] --> L[Learn] --> P[Plan] --> B
+  B --> D[Debug]
+  D --> F[Fix] --> T[Test] --> D
+`,
+  },
+  {
+    title: 'a compact figure-eight — written from Sleep, so the two circles stack',
+    doc: 'figure-eight',
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  S[Sleep] --> W[Wake] --> K[Work] --> N[Dine] --> S
+  S --> R[Dream] --> T[Toss] --> S
+`,
+  },
+  {
+    title: 'a band around four of five — the README picture beside the box',
+    doc: 'lifecycle-band',
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  I[Idea]
+  subgraph Funded
+    S[Spec]
+    B[Build]
+    T[Test]
+    P[Ship]
+  end
+  I --> S --> B --> T --> P --> I
 `,
   },
   {

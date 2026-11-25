@@ -1,18 +1,24 @@
 # mermaid-layout-circular
 
-A circular layout engine for [mermaid](https://mermaid.js.org) flowcharts.
-Write an ordinary flowchart, set `layout: circular`, and the nodes are
-placed evenly around a circle with the edges drawn as arcs of that same
-circle. The rest of the flowchart language keeps working: node shapes,
-edge labels, css classes, and `look: handDrawn`.
+A circular layout for mermaid flowcharts.
 
-Mermaid's default engine, dagre, is built for hierarchies. Given a cycle,
-it lays the nodes out in a line, and routes one long arrow back around the
-outside. This package addresses the request in
-[mermaid-js/mermaid#3228](https://github.com/mermaid-js/mermaid/issues/3228),
-open since 2022, that cycles be represented more naturally.
+[mermaid](https://mermaid.js.org) turns text into diagrams. It lays
+out flowcharts in rows, so a cycle comes out as a line with one long
+arrow looping back. This package adds a circular layout. A layout
+decides where each box goes, and the path each arrow takes. Here the
+nodes sit at even spacing on a circle. Each arrow follows the circle to the
+next node.
 
-Here is the same five-node flowchart rendered both ways:
+In Obsidian, use the
+[obsidian-mermaid-circular](https://github.com/AndrewBroz/obsidian-mermaid-circular)
+plugin instead. Obsidian is a notes app that can draw mermaid
+diagrams.
+
+<img src="docs/media/water-cycle.png" width="306" alt="Five boxes on a circle, Evaporation at the top, joined clockwise by curved arrows.">
+
+Pick the layout in the diagram's frontmatter. That is the settings
+block between two `---` lines at the top of the diagram. This is the
+text for the picture above:
 
 ```
 ---
@@ -27,29 +33,83 @@ flowchart LR
   O --> E
 ```
 
-| `layout: circular` | `layout: dagre` (mermaid default) |
+mermaid's default layout, called dagre, draws the same text like this:
+
+<img src="docs/media/water-cycle-dagre.png" width="656" alt="The same five boxes in a row, with one long arrow looping back from Collection to Evaporation.">
+
+This answers a request open in mermaid since 2022,
+[mermaid-js/mermaid#3228](https://github.com/mermaid-js/mermaid/issues/3228).
+
+## Which package to use
+
+The same circular layout comes in four packages. Pick the one that
+matches how you draw diagrams.
+
+Pele is a smaller program that draws diagrams from the same text.
+
+| You draw diagrams with | Use |
 | --- | --- |
-| ![The water cycle as a ring of five boxes connected by arcs of one circle](docs/media/water-cycle-circular.png) | ![The same five nodes flattened into a horizontal ladder with a long return arrow](docs/media/water-cycle-dagre.png) |
+| mermaid, in a web page or app | this package |
+| Pele, in a web page or app | [pele-layout-circular](https://github.com/AndrewBroz/pele-layout-circular) |
+| Obsidian, in your notes | [obsidian-mermaid-circular](https://github.com/AndrewBroz/obsidian-mermaid-circular), a plugin |
+| your own code | [layout-circular](https://github.com/AndrewBroz/layout-circular), the shared placement math |
 
-Edge label and chord handling:
+The first three use layout-circular to decide where each node goes.
+They place nodes the same way. They differ in how boxes and text are drawn.
 
+## Install
+
+```sh
+npm install mermaid mermaid-layout-circular
 ```
+
+Register the layout once, before mermaid draws anything:
+
+```ts
+import mermaid from 'mermaid';
+import circularLayouts from 'mermaid-layout-circular';
+
+mermaid.registerLayoutLoaders(circularLayouts);
+```
+
+Works with mermaid 11.12 and later, including every 12.x release.
+
+### From a CDN
+
+A web page can load both packages from jsDelivr, with no build step:
+
+```html
+<pre class="mermaid">
 ---
 config:
   layout: circular
 ---
 flowchart LR
-  W[Wake] -->|coffee| Wk[Work]
-  Wk -->|lunch| M[Meetings]
-  M -->|escape| F[Focus]
-  F -->|dusk| Hm[Home]
-  Hm -->|sleep| W
-  Wk -.->|skip the day| Hm
+  A --> B --> C --> D --> A
+</pre>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@12/dist/mermaid.esm.min.mjs';
+  import circularLayouts from
+    'https://cdn.jsdelivr.net/npm/mermaid-layout-circular@0.10/dist/mermaid-layout-circular.js';
+
+  mermaid.registerLayoutLoaders(circularLayouts);
+  await mermaid.run();
+</script>
 ```
 
-![A five-node daily cycle with labels in the gaps and a dotted chord across the middle](docs/media/labels-and-chord.png)
+## Write a circular diagram
 
-Mermaid's hand-drawn look works great:
+`layout: circular` places the first node at the top and runs
+clockwise. `layout: circular-ccw` runs counter-clockwise.
+
+The rest of the flowchart language works as usual: node shapes, edge
+labels, styles, classes and themes. The direction after `flowchart`
+(LR, TB) has no effect on this layout.
+
+mermaid's hand-drawn look works too:
+
+<img src="docs/media/hand-drawn.png" width="351" alt="Four sketchy boxes on a circle, Listen at the top, joined clockwise by hand-drawn arrows.">
 
 ```
 ---
@@ -65,188 +125,23 @@ flowchart LR
   H --> L
 ```
 
-![A four-node cycle drawn in mermaid's sketchy hand-drawn style](docs/media/hand-drawn.png)
+## Straight edges
 
-A cycle with side branches. The cycle stays on the
-circle. Branches hang off radially:
+By default, an arrow between two neighbors on the circle is curved
+along it. Set `flowchart.curve` to `linear` to draw straight lines
+instead, so the ring becomes a polygon.
 
-```
----
-config:
-  layout: circular
----
-flowchart LR
-  A[Citrate] --> B[Isocitrate] --> C[Ketoglutarate] --> D[Succinyl-CoA]
-  D --> E[Succinate] --> F[Fumarate] --> G[Malate] --> H[Oxaloacetate] --> A
-  AcCoA[Acetyl-CoA] --> A
-  C --> CO2a[CO2]
-  D --> CO2b[CO2 again]
-  G --> NADH
-```
+An arrow between two nodes that are not neighbors is called a chord.
+A chord is always a straight line across the circle. When two straight
+arrows join the same two nodes, they are drawn as parallel lines, each
+with its label on its own side.
 
-![An eight-node Krebs cycle ring with Acetyl-CoA feeding in from above and CO2 and NADH branching outward](docs/media/krebs-cycle.png)
+| Curved arrows (the default) | `curve: linear` |
+| --- | --- |
+| <img src="docs/media/daily-arcs.png" width="352" alt="Five boxes on a circle joined by curved labeled arrows, and a dotted chord from Work to Home."> | <img src="docs/media/daily-straight.png" width="352" alt="The same five boxes joined by straight labeled arrows, a pentagon, with the same dotted chord."> |
 
-A clearly identifiable hub is placed in the center automatically (this can be overridden with hub: none):
-
-```
----
-config:
-  layout: circular
----
-flowchart LR
-  Hub[Registry] --> A[Alpha]
-  Hub --> B[Bravo]
-  Hub --> C[Charlie]
-  Hub --> D[Delta]
-  Hub --> E[Echo]
-  B --> L[Bravo's log]
-```
-
-![A registry hub centered among five ringed spokes, with a log node hanging outward off one spoke](docs/media/hub-and-spoke.png)
-
-A wheel with hubs and a ring:
-
-```
----
-config:
-  layout: circular
----
-flowchart LR
-  A[Plan] --> B[Build] --> C[Test] --> D[Ship] --> E[Watch] --> F[Learn] --> A
-  A --> Hub[Vision]
-  B --> Hub
-  C --> Hub
-  D --> Hub
-  E --> Hub
-  F --> Hub
-```
-
-![A six-node plan-build-test ring with a vision node at the axle, fed by six straight spokes](docs/media/wheel.png)
-
-Hub detection is conservative, but will still handle some missing spokes and wheel segments:
-
-```
----
-config:
-  layout: circular
----
-flowchart TB
-  P[Captain
-  Planet!]
-  Earth <--> P
-  Fire <--> P
-  Wind <--> P
-  Water <--> P
-  Heart <--> P
-  Heart <--> Water
-  Heart <--> Earth
-  Earth <--> Fire
-  Fire <--> Wind
-  Water <--> Vapor
-  Vapor <--> Ice
-  Ice <--> Water
-```
-
-![Captain Planet centered among five ringed elements, the Water-Wind arc absent, with a Vapor-Ice gear meshing off Water](docs/media/captain-planet.png)
-
-Use the `hub` option to override. Use `'none'` for no hub,
-or use a node id to name the hub explicitly.
-
-Cycles can have cycles as offshoots:
-
-```
----
-config:
-  layout: circular
----
-flowchart LR
-  P[Plan] --> B[Build] --> S[Ship] --> L[Learn] --> P
-  B --> D[Debug]
-  D --> F[Fix] --> T[Test] --> D
-```
-
-![A four-node product loop with a debug triangle drawn as its own smaller circle beyond Build](docs/media/satellite-ring.png)
-
-Two cycles sharing a node make a figure-eight. The smaller circle flows
-the opposite clock direction from the main ring, which follows the eye
-and is the typical textbook rendering for diagrams like these:
-
-```
----
-config:
-  layout: circular
----
-flowchart LR
-  W[Wake] --> K[Work] --> N[Dine] --> S[Sleep] --> W
-  S --> R[Dream] --> T[Toss] --> S
-```
-
-![Two circles meeting at a shared Sleep node, the day loop large and the dream loop small](docs/media/figure-eight.png)
-
-Multiple interlocking cycles:
-
-```
----
-config:
-  layout: circular
----
-flowchart LR
-  A[Mine] --> B[Smelt] --> C[Cast] --> D[Sell] --> E[Invest] --> A
-  B --> F[Scrap]
-  F --> G[Sort] --> B
-  F --> H[Shred]
-  H --> I[Melt] --> F
-```
-
-![A five-node ring meshed with a second loop, which is meshed with a third, each spinning against the last](docs/media/three-gears.png)
-
-## Usage
-
-Select the layout per diagram in frontmatter, the same way
-`@mermaid-js/layout-elk` works:
-
-```
----
-config:
-  layout: circular
----
-flowchart LR
-  A --> B --> C --> D --> A
-```
-
-Register the layout once, before rendering:
-
-```ts
-import mermaid from 'mermaid';
-import circularLayouts from 'mermaid-layout-circular';
-
-mermaid.registerLayoutLoaders(circularLayouts);
-```
-
-Registration adds two layout names. `layout: circular` renders
-clockwise from the top; `layout: circular-ccw` renders
-counter-clockwise.
-
-```
----
-config:
-  layout: circular-ccw
----
-flowchart LR
-  E[Evaporation] --> C[Condensation]
-  C --> P[Precipitation]
-  P --> R[Runoff]
-  R --> O[Collection]
-  O --> E
-```
-
-![The water cycle running counter-clockwise: Evaporation on top, Condensation to its left, the arrows flowing leftward around the ring](docs/media/water-cycle-ccw.png)
-
-Setting `direction: 'counterclockwise'` in the options (below) does the
-same for diagrams that say `layout: circular`. The frontmatter declaration
-takes precedence.
-
-For straight edges, set mermaid's own `flowchart.curve` to `linear`:
+The text for the straight version is below. The curved one is the
+same without the `flowchart` and `curve` lines.
 
 ```
 ---
@@ -256,150 +151,121 @@ config:
     curve: linear
 ---
 flowchart LR
-  A[Plan] --> B[Build] --> C[Ship] --> A
+  W[Wake] -->|coffee| Wk[Work]
+  Wk -->|lunch| M[Meetings]
+  M -->|escape| F[Focus]
+  F -->|dusk| Hm[Home]
+  Hm -->|sleep| W
+  Wk -.->|skip the day| Hm
 ```
 
-Each edge between ring neighbors is then a straight line from border
-to border, so a three-cycle reads as a triangle, and two opposite
-edges become two parallel lines. Placement does not change. Only
-`linear` selects straight edges. Every other curve keeps the arcs. It
-works with `circular-ccw` too.
+## Groups
 
-Chords, edges between ring nodes that aren't neighbors, are straight
-whatever the curve. The ring's own edges carry the cycle, and a chord
-is a shortcut across it. Two opposite chords become two parallel
-lines, with their labels stepped aside. A chord across a ring with a
-hub runs through the hub.
+A subgraph (a group of nodes) keeps its members next to each other on
+the circle. A small group is drawn as a tight box. The circle turns,
+if needed, so the box clears every other node.
 
-Subgraphs:
+A group that covers half the circle or more is drawn as a band, a
+strip that follows the circle. A box around that much of a circle
+would cover the middle. When arrows cross the top of a box, its title
+moves to the bottom.
 
-```
----
-config:
-  layout: circular
----
-flowchart LR
-  E[Evaporation] --> C[Condensation]
-  subgraph Atmosphere
-    C --> P[Precipitation]
-  end
-  P --> R[Runoff]
-  subgraph Land
-    R --> O[Collection]
-  end
-  O --> E
-```
+| A small group: a box | A group around half the ring or more: a band |
+| --- | --- |
+| <img src="docs/media/lifecycle-box.png" width="315" alt="Five boxes on a circle. Build and Test sit inside a gray box titled Make, at the bottom."> | <img src="docs/media/lifecycle-band.png" width="365" alt="The same five boxes. A curved gray strip titled Funded holds four of them, all but Idea."> |
 
-![The water cycle with Atmosphere and Land boxes each wrapping two adjacent nodes of the ring](docs/media/subgraph-arc.png)
+More group examples are in the [gallery](docs/GALLERY.md#groups).
 
-A subgraph around a child cycle:
+## More shapes
 
-![A product loop with the debug triangle drawn as a satellite circle inside its own titled box](docs/media/subgraph-satellite.png)
+Not every diagram is one plain cycle. The layout keeps the main cycle
+on the circle, called the ring, and places everything else around it.
+A hub is one node linked to most of the others. A satellite is a
+second, smaller cycle hanging off the ring, drawn as its own circle. A
+branch is a node that hangs off the ring, pointing outward; the
+[gallery](docs/GALLERY.md#branches) shows branches.
 
-Each subgraph keeps clear of the nodes outside it and of the
-subgraphs beside it, and the circle stays whole: even gaps, one
-radius, mirror symmetry. To make room the layout turns the ring, so
-another node or the gap between two takes the top, and grows it
-evenly as far as needed. A subgraph whose members span half the ring
-or more is drawn as a band that follows the ring, with its title just
-outside, since a box around that much of a circle would cover the
-middle:
+<table>
+<tr>
+<td align="center"><img src="docs/media/hub.png" width="358" alt="Registry in the middle, with arrows out to Alpha above and to Bravo and Charlie below."><br>A hub goes in the middle</td>
+<td align="center"><img src="docs/media/satellite.png" width="296" alt="Build, Ship, Learn and Plan on a ring. Above Build, Debug, Fix and Test make a smaller circle."><br>A cycle off the ring gets its own circle</td>
+</tr>
+<tr>
+<td align="center"><img src="docs/media/wheel.png" width="388" alt="Five boxes on a ring from Plan to Learn, each with a straight arrow to Vision in the middle."><br>A wheel: a ring around a hub</td>
+<td align="center"><img src="docs/media/figure-eight.png" width="297" alt="Two circles stacked at Sleep: Wake, Work and Dine below, Dream and Toss above."><br>Two cycles sharing a node: a figure-eight</td>
+</tr>
+</table>
 
-```
----
-config:
-  layout: circular
----
-flowchart LR
-  I[Idea]
-  subgraph Funded
-    S[Spec] --> D[Design] --> B[Build] --> T[Test] --> P[Deploy] --> M[Monitor]
-  end
-  I --> S
-  M --> R[Retire] --> I
-```
+The source of every picture on this page is in
+[docs/GALLERY.md](docs/GALLERY.md), along with more examples. The
+[live gallery](https://andrewbroz.github.io/mermaid-layout-circular/)
+draws every case in your browser.
 
-A subgraph nested in a band is a band too, with its title between the
-two. Nested boxes seat together, and an outer box wraps the inner ones.
-A box's title sits on top, slid along to a spot no edge crosses, or at
-the bottom when spokes or chords run through the top.
-With `look: handDrawn`, a band is drawn plain, in the theme's cluster
-colors.
+## Hubs
 
-An edge pointing at a subgraph itself (rather than a node inside it)
-is not handled yet, and drops with a warning. Diagram types other
-than flowcharts are out of scope.
+The layout puts a node in the middle only when the diagram's shape
+calls for it. Two shapes do.
 
-To use the layout in Obsidian, install
-[obsidian-mermaid-circular](https://github.com/AndrewBroz/obsidian-mermaid-circular),
-a small plugin that adds circular layouts to Mermaid flowcharts.
-Since 1.15, Obsidian renders Mermaid with Pele, not mermaid. The plugin
-steps in only for diagrams that ask for a circular layout. Pele's
-counterpart to this package is
-[pele-layout-circular](https://github.com/AndrewBroz/pele-layout-circular).
-This package's options are for code that calls mermaid itself, not for
-Obsidian.
+- A wheel. One node in the cycle links to more of the cycle's nodes
+  than any other node does, and to at least three. The cycle still
+  closes without it. A node linked to every other node in the cycle
+  also counts, even if the cycle has gaps.
+- A star. The diagram has no cycle, and one node has more links than
+  any other, at least three.
 
-## Options
-
-Mermaid's config schema has no slot for layout engine options, so the
-knobs are set in code, next to registration:
+You can turn this off, or name the hub yourself. This is set in code,
+next to the registration, not in frontmatter:
 
 ```ts
 import { setCircularLayoutOptions } from 'mermaid-layout-circular';
 
-setCircularLayoutOptions({ spacing: 60, parallelGap: 12 });
+setCircularLayoutOptions({ hub: 'none' }); // never use a hub
+// or
+setCircularLayoutOptions({ hub: 'Hub' }); // the node with id Hub is the hub
 ```
 
-The available options and their defaults live in `CircularLayoutOptions`
-and `defaults` in `src/layout.ts` of `layout-circular`, the package
-that holds the placement math. Every default was chosen by
-rendering the alternatives and looking at them. The screenshots that
-drove those choices are committed in `trials/`, and the verdicts are
-recorded in `docs/DECISIONS.md`. The bow and swerve trials there are
-history: those options were removed when chords became straight.
-When no option overrides it, `spacing` is seeded from mermaid's own
-`flowchart.nodeSpacing`. This package sets `tail` to 10, to clear
-mermaid's marker handling.
+A node's id is the name before its brackets in the diagram text. In
+the hub picture above, `Hub[Registry]` has the id `Hub`.
 
-## Demo
+## Options
 
-`npm run dev` serves the demo. The gallery at `/` renders every case
-in `demo/cases.ts`, and `/trials.html?suite=ordering` (also `spacing`,
-`samples`) renders the same diagrams under different option values
-for side-by-side comparison.
+mermaid's settings have no place for layout options, so you set them in
+code with `setCircularLayoutOptions`, next to the registration:
+
+```ts
+setCircularLayoutOptions({ spacing: 60, hub: 'none' });
+```
+
+Each call replaces the options set before it, so pass them all in one
+call.
+
+- `spacing`, the gap between nodes, starts from mermaid's own
+  `flowchart.nodeSpacing`.
+- A diagram's own frontmatter wins over options set in code. A diagram
+  that says `circular-ccw` or `curve: linear` gets that, whatever the
+  code set.
+
+[All options](https://github.com/AndrewBroz/layout-circular/blob/main/docs/OPTIONS.md)
+are listed in layout-circular, with their defaults.
+
+## Limits
+
+- An arrow that points at a subgraph itself, not a node in it, is
+  dropped, with a warning in the console.
+- With `look: handDrawn`, a band is drawn with plain lines.
+- If the page scales the diagram with a CSS transform, edge labels can
+  overlap. mermaid measures labels in screen pixels.
+- Only flowcharts are supported.
+- The package uses mermaid's `InternalHelpers`, which mermaid marks as
+  not for outside use. mermaid's own elk and tidy-tree layouts use them
+  too.
 
 ## Development
 
-The placement math lives in `layout-circular`. It is a devDependency.
-The build compiles it into this package's bundle, and its types into
-`dist/index.d.ts`. The published package does not depend on it at
-runtime. Changes to the math, its options and its tests go
-there. This repo keeps the mermaid seam: `src/render.ts` measures nodes
-and labels, hands them to the math, and draws the result through
-mermaid. It installs from GitHub (`github:AndrewBroz/layout-circular`),
-and npm builds it on install. To work on both at once, `npm link` a
-local checkout of the core.
-
-Three gates, all green before committing changes to `src/`:
-
-```sh
-npm test        # vitest, the mermaid seam
-npm run lint    # eslint
-npm run build   # vite library build plus bundled type declarations
-```
-
-## Caveats
-
-The package renders through mermaid's `InternalHelpers`, which mermaid
-marks as deprecated for external use. The official layout engines (elk,
-tidy-tree) use this too so the risk is low. This layout should work with
-`mermaid >=11.12.0 <13`. Developed against 12.3.
-
-_Note:_ mermaid measures HTML edge labels
-with `getBoundingClientRect`, which reports screen pixels. If the
-rendering container is scaled by a CSS transform, label collision
-checks will be off by that scale factor.
+`npm test`, `npm run lint` and `npm run build` are the checks.
+`npm run dev` serves the gallery locally. `npm run docs:images` redraws
+the pictures in this README and the gallery. The reasons behind the
+design are in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## License
 

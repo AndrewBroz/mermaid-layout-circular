@@ -53,3 +53,12 @@ Already satisfied on the plugin repo: release tags match
 `id`/`name` follow the naming rules, LICENSE and README present.
 The PR text and any exchanges with reviewers are written by the
 author, not generated.
+
+## README pictures
+
+Redraw them with `npm run docs:images`, on macOS (mermaid's font list
+starts with fonts macOS has). `--only id,id` redraws some of them. npm
+shows README images from `main`, not from the published version. So
+never rename or delete a picture the latest npm README still uses. Add
+the new file, and delete the old one after the next publish. Redrawing
+a picture under its own name is fine.

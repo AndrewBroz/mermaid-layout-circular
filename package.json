@@ -1,6 +1,6 @@
 {
   "name": "mermaid-layout-circular",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "A circular layout for mermaid flowcharts. Nodes sit on a circle, and arrows follow it.",
   "type": "module",
   "module": "dist/mermaid-layout-circular.js",

@@ -69,6 +69,12 @@
         align-items: center;
         gap: 0.4rem;
         white-space: nowrap;
+        max-width: 100%;
+      }
+      /* An option label can be wider than a phone; the drop-down shrinks
+         to fit its label instead. */
+      .controls select {
+        min-width: 0;
       }
       .controls label.disabled {
         opacity: 0.45;

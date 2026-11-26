@@ -17,11 +17,12 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      # No dependency cache here: a poisoned cache would run in the job
+      # that holds the OIDC token, as setup-node's publishing docs warn.
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
           registry-url: https://registry.npmjs.org
       # Trusted publishing (OIDC) needs npm 11.5.1 or later; Node 22
       # ships npm 10, which publishes unauthenticated and gets a 404.

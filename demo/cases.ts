@@ -343,8 +343,8 @@ export const cases: Case[] = [
 `,
   },
   {
-    title: 'a subgraph nested in a band is a band too, its title between the two',
-    doc: 'nested-band',
+    title: 'a subgraph nested in a box is a box inside it',
+    doc: 'nested-box',
     wide: true,
     text:
       frontmatter('circular') +
@@ -360,6 +360,53 @@ export const cases: Case[] = [
   end
   P --> D --> C --> T --> R --> V[Review] --> P
   style CI fill:#ffd
+`,
+  },
+  {
+    title: 'a subgraph no box can clear, round a hub outside it — a band',
+    doc: 'hub-band',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  subgraph Core
+    A[Alpha]
+    B[Bravo]
+    C[Charlie]
+    D[Delta]
+  end
+  A --> B --> C --> D --> E[Echo] --> F[Foxtrot] --> A
+  A --> H[Registry]
+  B --> H
+  C --> H
+  D --> H
+  E --> H
+  F --> H
+`,
+  },
+  {
+    title: 'a subgraph nested in a band is a band too, its title between the two',
+    doc: 'hub-nested-band',
+    wide: true,
+    text:
+      frontmatter('circular') +
+      `flowchart LR
+  subgraph Core
+    A[Alpha]
+    subgraph Hot
+      B[Bravo]
+      C[Charlie]
+    end
+    D[Delta]
+  end
+  A --> B --> C --> D --> E[Echo] --> F[Foxtrot] --> A
+  A --> H[Registry]
+  B --> H
+  C --> H
+  D --> H
+  E --> H
+  F --> H
+  style Hot fill:#ffd
 `,
   },
   {
@@ -428,8 +475,8 @@ export const cases: Case[] = [
 `,
   },
   {
-    title: 'a band around four of five — the README picture beside the box',
-    doc: 'lifecycle-band',
+    title: 'a box around four of five — a big group is a box when one clears',
+    doc: 'lifecycle-funded',
     text:
       frontmatter('circular') +
       `flowchart LR

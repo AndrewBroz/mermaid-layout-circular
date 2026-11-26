@@ -1,8 +1,8 @@
 name: pages
 
-# Builds the demo gallery and deploys it to GitHub Pages on every
-# push to main. Repo setting required once: Pages → Source →
-# GitHub Actions.
+# Builds the demo site, the playground and the gallery, and deploys
+# it to GitHub Pages on every push to main. Repo setting required
+# once: Pages → Source → GitHub Actions.
 
 on:
   push:

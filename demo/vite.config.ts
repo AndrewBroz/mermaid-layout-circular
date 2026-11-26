@@ -11,6 +11,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         index: resolve(import.meta.dirname, 'index.html'),
+        gallery: resolve(import.meta.dirname, 'gallery.html'),
         trials: resolve(import.meta.dirname, 'trials.html'),
         review: resolve(import.meta.dirname, 'review.html'),
       },

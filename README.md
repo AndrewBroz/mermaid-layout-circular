@@ -40,6 +40,10 @@ mermaid's default layout, called dagre, draws the same text like this:
 This answers a request open in mermaid since 2022,
 [mermaid-js/mermaid#3228](https://github.com/mermaid-js/mermaid/issues/3228).
 
+Try it in the
+[playground](https://andrewbroz.github.io/mermaid-layout-circular/).
+Pick an example, edit its text, and switch the settings on and off.
+
 ## Which package to use
 
 The same circular layout comes in four packages. Pick the one that
@@ -199,7 +203,7 @@ branch is a node that hangs off the ring, pointing outward; the
 
 The source of every picture on this page is in
 [docs/GALLERY.md](docs/GALLERY.md), along with more examples. The
-[live gallery](https://andrewbroz.github.io/mermaid-layout-circular/)
+[live gallery](https://andrewbroz.github.io/mermaid-layout-circular/gallery.html)
 draws every case in your browser.
 
 ## Hubs
@@ -264,7 +268,7 @@ are listed in layout-circular, with their defaults.
 ## Development
 
 `npm test`, `npm run lint` and `npm run build` are the checks.
-`npm run dev` serves the gallery locally. `npm run docs:images` redraws
+`npm run dev` serves the playground and the gallery locally. `npm run docs:images` redraws
 the pictures in this README and the gallery. The reasons behind the
 design are in [docs/DECISIONS.md](docs/DECISIONS.md).
 

@@ -24,11 +24,12 @@ One-time setup, in order:
 
 ## Demo site
 
-`.github/workflows/pages.yml` builds the demo gallery
+`.github/workflows/pages.yml` builds the demo site
 (`vite build demo`) and deploys it to GitHub Pages on every push to
 main. Repo setting, once: Pages → Source → GitHub Actions. The
-gallery lands at `https://andrewbroz.github.io/mermaid-layout-circular/`,
-with `/review.html?set=circles|user|kinks` and `/trials.html` intact.
+playground lands at `https://andrewbroz.github.io/mermaid-layout-circular/`
+and the gallery at `/gallery.html`, with
+`/review.html?set=circles|user|kinks` and `/trials.html` intact.
 
 ## Obsidian community plugins
 

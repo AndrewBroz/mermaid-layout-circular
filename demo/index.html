@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- The preview draws text from shared links. The renderer escapes
+         it; this policy also blocks inline handlers and javascript: links
+         in case a renderer ever lets one through. -->
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self'" />
     <title>mermaid-layout-circular — playground</title>
     <meta
       name="description"

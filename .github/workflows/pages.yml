@@ -17,7 +17,7 @@ jobs:
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.retry1.outputs.page_url || steps.retry2.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,8 +26,27 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx vite build demo
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: demo/dist
+      # deploy-pages looks the artifact up by name once. The lookup can
+      # miss an artifact uploaded moments before; the delay has reached
+      # 46 s (actions/deploy-pages#451). So the deploy is tried up to
+      # three times, after waits of 10 s and 50 s. Re-running the job
+      # cannot recover: it uploads a second artifact and the lookup
+      # then fails on two. Drop the retries once the action retries
+      # the lookup itself.
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
+        continue-on-error: true
+      - if: steps.deployment.outcome == 'failure'
+        run: sleep 10
+      - id: retry1
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v5
+        continue-on-error: true
+      - if: steps.retry1.outcome == 'failure'
+        run: sleep 50
+      - id: retry2
+        if: steps.retry1.outcome == 'failure'
+        uses: actions/deploy-pages@v5

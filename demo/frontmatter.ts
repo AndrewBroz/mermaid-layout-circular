@@ -1,4 +1,4 @@
-import { isMap, parseDocument, type Document } from 'yaml';
+import { isMap, isNode, isScalar, parseDocument, YAMLMap, type Document } from 'yaml';
 
 /** Reads and edits the `config` settings in a diagram's frontmatter.
  *  The playground's controls use this to write into the editor text,
@@ -29,8 +29,12 @@ const split = (text: string): Parts => {
   return { yaml: match[1] ?? '', rest: text.slice(match[0].length), eol };
 };
 
+/** A node with nothing in it, such as `config:` with no lines below. */
+const isNull = (node: unknown): boolean => isScalar(node) && node.value === null;
+
 /** The parsed frontmatter, or undefined when it isn't YAML whose top
- *  level and `config` are maps, which the controls could edit. */
+ *  level and `config` are maps, which the controls could edit. An
+ *  empty `config:` counts as no settings. */
 const parse = (yaml: string): Document | undefined => {
   const doc = parseDocument(yaml);
   if (doc.errors.length > 0) {
@@ -40,7 +44,7 @@ const parse = (yaml: string): Document | undefined => {
     return undefined;
   }
   const config = doc.get('config', true);
-  if (config !== undefined && config !== null && !isMap(config)) {
+  if (config !== undefined && !isNull(config) && !isMap(config)) {
     return undefined;
   }
   return doc;
@@ -59,10 +63,45 @@ export const readConfig = (text: string): Record<string, unknown> | undefined =>
 
 const isEmptyMap = (node: unknown): boolean => isMap(node) && node.items.length === 0;
 
+/** Comments joined in order, or undefined when there are none. */
+const joinComments = (...comments: (string | null | undefined)[]): string | undefined =>
+  comments.filter(Boolean).join('\n') || undefined;
+
+/** Removes `key` from `map`. The comments written on their own lines
+ *  above it, or inside a map it held, move to the next key, or to the
+ *  end of `map`. A comment at the end of the removed line goes with it. */
+const removeKey = (map: YAMLMap, key: string) => {
+  const i = map.items.findIndex((pair) => isScalar(pair.key) && pair.key.value === key);
+  const [pair] = map.items.splice(i, 1);
+  if (!pair) {
+    return;
+  }
+  const value = isMap(pair.value) ? pair.value : undefined;
+  const kept = joinComments(
+    isNode(pair.key) ? pair.key.commentBefore : undefined,
+    value?.commentBefore,
+    value?.comment
+  );
+  const next = map.items[i]?.key;
+  if (isNode(next)) {
+    next.commentBefore = joinComments(kept, next.commentBefore);
+  } else {
+    map.comment = joinComments(map.comment, kept);
+  }
+};
+
+/** The YAML for frontmatter with no settings left but comments. */
+const commentsOnly = (doc: Document): string =>
+  [doc.commentBefore, doc.comment]
+    .filter(Boolean)
+    .map((comment) => comment!.replace(/^/gm, '#'))
+    .join('\n\n') + '\n';
+
 /** Sets `config.<path>` to `value`, or deletes it when `value` is
- *  undefined. A map left empty by a delete goes too, and so does the
- *  whole block. Returns the text unchanged when the frontmatter
- *  doesn't parse. */
+ *  undefined. Setting replaces an empty or plain value on the way with
+ *  a map. A map left empty by a delete goes too, and so does the whole
+ *  block, unless it holds comments. Returns the text unchanged when
+ *  the frontmatter doesn't parse. */
 export const setConfig = (
   text: string,
   path: ConfigPath,
@@ -78,16 +117,32 @@ export const setConfig = (
     if (!doc.hasIn(full)) {
       return text;
     }
-    doc.deleteIn(full);
-    for (let n = full.length - 1; n > 0 && isEmptyMap(doc.getIn(full.slice(0, n))); n--) {
-      doc.deleteIn(full.slice(0, n));
+    // The maps from the top level down to the one that holds the key.
+    const maps = full.map((_, n) => (n === 0 ? doc.contents : doc.getIn(full.slice(0, n), true)));
+    for (let n = full.length - 1; n >= 0; n--) {
+      removeKey(maps[n] as YAMLMap, full[n]!);
+      if (n > 0 && !isEmptyMap(maps[n])) {
+        break;
+      }
     }
   } else {
+    for (let n = 1; n < full.length; n++) {
+      if (!isMap(doc.getIn(full.slice(0, n), true))) {
+        doc.setIn(full.slice(0, n), new YAMLMap());
+      }
+    }
     doc.setIn(full, value);
   }
+  let out: string;
   if (doc.contents === null || isEmptyMap(doc.contents)) {
-    return rest;
+    const top = doc.contents as YAMLMap | null;
+    doc.comment = joinComments(top?.commentBefore, top?.comment, doc.comment) ?? null;
+    if (!doc.commentBefore && !doc.comment) {
+      return rest;
+    }
+    out = commentsOnly(doc);
+  } else {
+    out = doc.toString();
   }
-  const out = doc.toString().replaceAll('\n', eol);
-  return `---${eol}${out}---${eol}${rest}`;
+  return `---${eol}${out.replaceAll('\n', eol)}---${eol}${rest}`;
 };

@@ -87,3 +87,53 @@ test('config that is not a map reads as undefined and is not edited', () => {
   expect(readConfig(text)).toBeUndefined();
   expect(setConfig(text, ['layout'], 'circular')).toBe(text);
 });
+
+test('turning the last setting off keeps a comment above it', () => {
+  const out = setConfig(fm('# my diagram\n\nconfig:\n  layout: circular\n'), ['layout'], undefined);
+  expect(out).toContain('# my diagram');
+  expect(out.endsWith(body)).toBe(true);
+  expect(readConfig(out)).toEqual({});
+});
+
+test('turning the last setting off keeps a comment after it', () => {
+  const out = setConfig(fm('config:\n  layout: circular\n# end\n'), ['layout'], undefined);
+  expect(out).toContain('# end');
+  expect(readConfig(out)).toEqual({});
+});
+
+test('a comment above a removed map stays', () => {
+  const out = setConfig(fm('title: T\n# settings\nconfig:\n  layout: circular\n'), ['layout'], undefined);
+  expect(out).toContain('# settings');
+  expect(out).toContain('title: T');
+  expect(readConfig(out)).toEqual({});
+});
+
+test('a comment inside a removed map stays', () => {
+  const text = fm('config:\n  flowchart:\n    curve: linear\n    # straight\n  layout: circular\n');
+  const out = setConfig(text, ['flowchart', 'curve'], undefined);
+  expect(out).toContain('# straight');
+  expect(readConfig(out)).toEqual({ layout: 'circular' });
+});
+
+test('an empty config reads as no settings', () => {
+  expect(readConfig(fm('config:\n'))).toEqual({});
+  expect(readConfig(setConfig(fm('config:\n'), ['layout'], 'circular'))).toEqual({
+    layout: 'circular',
+  });
+});
+
+test.each(['flowchart:\n', 'flowchart: basis\n'])(
+  'setting a key under %j replaces it with a map',
+  (flowchart) => {
+    const text = fm(`config:\n  layout: circular\n  ${flowchart}`);
+    expect(readConfig(setConfig(text, ['flowchart', 'curve'], 'linear'))).toEqual({
+      layout: 'circular',
+      flowchart: { curve: 'linear' },
+    });
+  }
+);
+
+test('deleting under a scalar changes nothing', () => {
+  const text = fm('config:\n  flowchart: basis\n');
+  expect(setConfig(text, ['flowchart', 'curve'], undefined)).toBe(text);
+});

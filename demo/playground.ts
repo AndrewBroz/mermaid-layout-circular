@@ -95,13 +95,23 @@ const syncControls = () => {
   }
 };
 
-/** Marks the text as the visitor's own and puts it in the link. */
+/** Puts a hash in the address bar. Safari allows 100 calls in 10 s
+ *  and Firefox 200, then throw; the link then waits for the next
+ *  change instead of stopping the page. */
+const setLink = (url: string) => {
+  try {
+    history.replaceState(null, '', url);
+  } catch {
+    // Over the browser's limit: keep the previous link.
+  }
+};
+
+/** Marks the text as the visitor's own. */
 const markYours = () => {
   if (!yours.parentElement) {
     picker.prepend(yours);
   }
   picker.value = '';
-  history.replaceState(null, '', writeHash({ text: editor.value }));
 };
 
 const show = (text: string) => {
@@ -113,7 +123,7 @@ const show = (text: string) => {
 const showExample = (example: Example, link: boolean) => {
   yours.remove();
   picker.value = example.name;
-  history.replaceState(null, '', link ? writeHash({ example: example.name }) : location.pathname);
+  setLink(link ? writeHash({ example: example.name }) : location.pathname);
   show(example.text);
 };
 
@@ -131,11 +141,15 @@ const showHash = () => {
 
 let typing: ReturnType<typeof setTimeout> | undefined;
 editor.addEventListener('input', () => {
+  clearTimeout(typing);
+  // The drawing and the link follow once typing pauses. 300 ms skips
+  // the gaps between keystrokes but still feels live.
+  typing = setTimeout(() => {
+    setLink(writeHash({ text: editor.value }));
+    void draw();
+  }, 300);
   syncControls();
   markYours();
-  clearTimeout(typing);
-  // Redraw once typing pauses, not on every keystroke.
-  typing = setTimeout(() => void draw(), 300);
 });
 
 picker.addEventListener('change', () => {
@@ -150,6 +164,7 @@ const write = (path: ConfigPath, value: string | undefined) => {
   clearTimeout(typing);
   show(setConfig(editor.value, path, value));
   markYours();
+  setLink(writeHash({ text: editor.value }));
 };
 
 const layout = () => (counterClockwise ? 'circular-ccw' : 'circular');

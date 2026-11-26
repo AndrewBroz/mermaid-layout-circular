@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { setCircularLayoutOptions } from './options.js';
-import { bandPath, boxTitleAt, layoutGroupsFor, layoutOptionsFor } from './render.js';
+import { boxTitleAt, layoutGroupsFor, layoutOptionsFor } from './render.js';
 
 // The placement math and its tests live in layout-circular. What is
 // tested here is the mermaid seam: which options reach the math.
@@ -80,36 +80,6 @@ describe('layoutGroupsFor', () => {
     );
     expect(groups[0]!.title).toEqual({ width: 84.5, height: 24 });
     expect(groups[1]!.title).toBeUndefined();
-  });
-});
-
-describe('bandPath', () => {
-  it('outlines a band: the outer arc clockwise, the inner arc back', () => {
-    const d = bandPath({
-      kind: 'band',
-      id: 'g',
-      center: { x: 0, y: 0 },
-      innerRadius: 50,
-      outerRadius: 100,
-      startAngle: 0,
-      endAngle: Math.PI / 2,
-      title: { x: 0, y: 0 },
-    });
-    expect(d).toBe('M100,0A100,100 0 0 1 0,100L0,50A50,50 0 0 0 50,0Z');
-  });
-
-  it('takes the large arc past half a turn', () => {
-    const d = bandPath({
-      kind: 'band',
-      id: 'g',
-      center: { x: 10, y: 20 },
-      innerRadius: 50,
-      outerRadius: 100,
-      startAngle: -Math.PI / 2,
-      endAngle: Math.PI,
-      title: { x: 0, y: 0 },
-    });
-    expect(d).toBe('M10,-80A100,100 0 1 1 -90,20L-40,20A50,50 0 1 0 10,-30Z');
   });
 });
 

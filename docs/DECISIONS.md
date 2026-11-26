@@ -341,3 +341,14 @@ update the README beside it.
   node, so their circles stack and stay narrow. The larger versions
   stay in the demo. `CLAUDE.md` is no longer a symlink to the README;
   it holds the agent's own rules.
+- **2026-11-25 — Provisional: bands drawn from the core's outline.**
+  Pending the owner's judgment of renders, on branch
+  `feat/fit-groups`; not settled. It follows layout-circular's
+  provisional rule on the same branch: a group is a box when one
+  clears, a box may put its title below rather than turn the ring, and
+  a band is a traced outline instead of an annular sector. The band's
+  path is the core's `outlinePath`, so `bandPath` and its two tests are
+  gone. The README and gallery pictures, and the `lifecycle-band` demo
+  case, still show the old band. Under the new rule that case is a box;
+  the pictures and the case wait for the owner's verdict.
+

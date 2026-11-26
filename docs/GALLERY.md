@@ -192,9 +192,9 @@ flowchart LR
 
 ## Groups
 
-### A small group
+### A box
 
-A subgraph (a group of nodes) keeps its members next to each other on the circle. A small group is drawn as a tight box. The circle turns, if needed, so the box clears every other node.
+A subgraph (a group of nodes) keeps its members next to each other on the circle. A group is drawn as a tight box when one fits. The circle turns, if needed, so the box clears every other node.
 
 <img src="media/lifecycle-box.png" width="485" alt="Five boxes on a circle. Build and Test sit inside a gray box titled Make, at the bottom.">
 
@@ -212,11 +212,11 @@ flowchart LR
   S --> B --> T --> P[Ship] --> I
 ```
 
-### A group around half the ring or more
+### A box around most of the ring
 
-A group that covers half the circle or more is drawn as a band, a strip that follows the circle. Its title sits outside it.
+A big group is a box too, as long as one clears every other node. Funded holds four of the five nodes.
 
-<img src="media/lifecycle-band.png" width="562" alt="The same five boxes. A curved gray strip titled Funded holds four of them, all but Idea.">
+<img src="media/lifecycle-funded.png" width="530" alt="Five boxes on a circle. A large gray box titled Funded holds Spec, Build, Test and Ship. Idea sits above it.">
 
 ```
 ---
@@ -234,11 +234,11 @@ flowchart LR
   I --> S --> B --> T --> P --> I
 ```
 
-### A group inside a band
+### A group inside a box
 
-A group inside a band is drawn as a band too. Its title sits between the two. The `style` line colors the inner group.
+A group nested inside a box is a box inside it. The `style` line colors the inner group.
 
-<img src="media/nested-band.png" width="640" alt="Two curved strips, Engineering around four boxes and a yellow CI strip inside it around Code and Test.">
+<img src="media/nested-box.png" width="608" alt="Six boxes on a circle. A gray box titled Engineering holds Design, Code, Test and Release, with a yellow box titled CI around Code and Test.">
 
 ```
 ---
@@ -259,11 +259,68 @@ flowchart LR
   style CI fill:#ffd
 ```
 
+### A band, when no box fits
+
+A group becomes a band, a strip that follows the circle, only when no box fits. Here every node has an arrow to Registry in the middle, so any box around Core would cover it. The band leaves Registry outside. Its title sits outside the band.
+
+<img src="media/hub-band.png" width="640" alt="Six boxes on a circle around a hub, Registry, with an arrow from each to the hub. A gray curved strip titled Core runs along the right half under Alpha, Bravo, Charlie and Delta, and leaves the hub outside.">
+
+```
+---
+config:
+  layout: circular
+---
+flowchart LR
+  subgraph Core
+    A[Alpha]
+    B[Bravo]
+    C[Charlie]
+    D[Delta]
+  end
+  A --> B --> C --> D --> E[Echo] --> F[Foxtrot] --> A
+  A --> H[Registry]
+  B --> H
+  C --> H
+  D --> H
+  E --> H
+  F --> H
+```
+
+### A group inside a band
+
+A group inside a band is drawn as a band too. Its title sits between the two. The `style` line colors the inner group.
+
+<img src="media/hub-nested-band.png" width="640" alt="Six boxes around a hub, Registry. A gray curved strip titled Core runs under Alpha, Bravo, Charlie and Delta, with a yellow strip titled Hot inside it under Bravo and Charlie.">
+
+```
+---
+config:
+  layout: circular
+---
+flowchart LR
+  subgraph Core
+    A[Alpha]
+    subgraph Hot
+      B[Bravo]
+      C[Charlie]
+    end
+    D[Delta]
+  end
+  A --> B --> C --> D --> E[Echo] --> F[Foxtrot] --> A
+  A --> H[Registry]
+  B --> H
+  C --> H
+  D --> H
+  E --> H
+  F --> H
+  style Hot fill:#ffd
+```
+
 ### A title moved to the bottom
 
 Spokes from Registry cross the top of the Archive box. So the title moves to the bottom, where no arrow crosses.
 
-<img src="media/title-bottom.png" width="611" alt="Registry in the middle with six spokes. Charlie and Delta sit in a box with its title, Archive, at the bottom.">
+<img src="media/title-bottom.png" width="613" alt="Registry in the middle with six spokes. Charlie and Delta sit in a box with its title, Archive, at the bottom.">
 
 ```
 ---

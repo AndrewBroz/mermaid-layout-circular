@@ -341,13 +341,19 @@ update the README beside it.
   node, so their circles stack and stay narrow. The larger versions
   stay in the demo. `CLAUDE.md` is no longer a symlink to the README;
   it holds the agent's own rules.
-- **2026-11-25 — Provisional: groups by fit, with the title allowed
-  below.** Pending the owner's judgment of renders, on branch
-  `feat/fit-groups`; not settled. It follows layout-circular's
-  provisional rule on the same branch: a group is a box when one
-  clears, and a box may put its title below rather than turn the ring,
-  never instead of growth. Nothing in this package changes; bands are
-  drawn as on main. The README and gallery pictures, and the
-  `lifecycle-band` demo case, still show the old band. Under the new
-  rule that case is a box; the pictures and the case wait for the
-  owner's verdict.
+- **2026-11-26 — The core installs from npm, at 0.3.0.** The
+  devDependency is `layout-circular@^0.3.0` from npm, in place of
+  `github:AndrewBroz/layout-circular`. The GitHub entry was a stopgap
+  until an npm release. Its lockfile still pinned the 0.1.1 commit, so
+  the bundle carried 0.1.1. With 0.3.0 the bundle gains every core
+  change since then: a box holds the arcs between its members, the
+  `title-bottom` hub is compact, and groups take their shape by fit.
+- **2026-11-26 — Groups by fit.** A group is a box when one clears,
+  however much of the ring it covers. A box may put its title below at
+  a turn that can't clear with titles on top. A group is a band only
+  when no box fits. The owner picked this from renders; it is
+  provisional and may change. This package draws bands as before. The
+  docs show a band with `hub-band` and a nested band with
+  `hub-nested-band`. `lifecycle-band.png` and `nested-band.png` stay
+  until the next release, because the npm README loads its pictures
+  from `main`.

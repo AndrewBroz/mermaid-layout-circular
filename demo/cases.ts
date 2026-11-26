@@ -520,3 +520,54 @@ export const cases: Case[] = [
   },
 ];
 
+
+/** A section of docs/GALLERY.md. */
+export type Section = 'Shapes' | 'Groups' | 'Arrows' | 'Other';
+
+/** A starting point in the playground's drop-down. */
+export interface Example {
+  /** The case's `doc` name; the playground's link uses it. */
+  name: string;
+  label: string;
+  /** The GALLERY.md section it is listed under. The water cycle,
+   *  which is in the README and not the gallery, has none. */
+  section?: Section;
+  text: string;
+}
+
+/** The playground's examples: the water cycle, then every
+ *  docs/GALLERY.md heading in its order, each naming its case by the
+ *  picture under it. */
+const exampleList: [name: string, label: string, section?: Section][] = [
+  ['water-cycle', 'The water cycle'],
+  ['branches', 'Branches', 'Shapes'],
+  ['hub', 'A hub', 'Shapes'],
+  ['wheel', 'A wheel', 'Shapes'],
+  ['satellite', 'A satellite', 'Shapes'],
+  ['figure-eight', 'A figure-eight', 'Shapes'],
+  ['three-gears', 'Three linked cycles', 'Shapes'],
+  ['krebs', 'A larger cycle with branches', 'Shapes'],
+  ['captain-planet', 'A hub with gaps', 'Shapes'],
+  ['spur-and-satellite', 'A branch and a satellite on one node', 'Shapes'],
+  ['lifecycle-box', 'A box', 'Groups'],
+  ['lifecycle-funded', 'A box around most of the ring', 'Groups'],
+  ['nested-box', 'A group inside a box', 'Groups'],
+  ['hub-band', 'A band, when no box fits', 'Groups'],
+  ['hub-nested-band', 'A group inside a band', 'Groups'],
+  ['title-bottom', 'A title moved to the bottom', 'Groups'],
+  ['group-satellite', 'A group around a satellite', 'Groups'],
+  ['daily-arcs', 'Curved arrows and a chord', 'Arrows'],
+  ['daily-straight', 'Straight arrows', 'Arrows'],
+  ['parallel-lines', 'Parallel lines', 'Arrows'],
+  ['self-loop', 'A loop and a return arrow', 'Arrows'],
+  ['water-cycle-ccw', 'Counter-clockwise', 'Other'],
+  ['mixed-shapes', 'Mixed shapes and sizes', 'Other'],
+];
+
+export const examples: Example[] = exampleList.map(([name, label, section]) => {
+  const c = cases.find((x) => x.doc === name);
+  if (!c) {
+    throw new Error(`no demo case has doc name ${name}`);
+  }
+  return { name, label, ...(section && { section }), text: c.text };
+});

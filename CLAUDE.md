@@ -20,8 +20,8 @@ The circular layout for the mermaid codebase. Read `README.md` and
 - Rendering goes through mermaid's `InternalHelpers`. Keep the peer
   range in `package.json` matched to the versions tested.
 - Visual changes are judged by rendering. `npm run dev` serves the
-  gallery at `/` and the trials at `/trials.html?suite=ordering`
-  (also `spacing`, `samples`).
+  playground at `/`, the gallery at `/gallery.html` and the trials at
+  `/trials.html?suite=ordering` (also `spacing`, `samples`).
 
 ## Docs
 

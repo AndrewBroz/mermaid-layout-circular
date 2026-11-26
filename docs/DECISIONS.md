@@ -357,3 +357,20 @@ update the README beside it.
   `hub-nested-band`. `lifecycle-band.png` and `nested-band.png` stay
   until the next release, because the npm README loads its pictures
   from `main`.
+- **2026-11-26 — A playground.** The demo site's front page is a
+  playground. A visitor picks an example from a drop-down, edits its
+  text, and sees it drawn. The owner asked for the drop-down, a quick
+  editor for the frontmatter settings, and a Circular toggle in place
+  of a side-by-side comparison. The controls are Circular, its
+  direction, Straight edges and Hand-drawn. They write into the text,
+  so what is drawn is always what a visitor can copy. Each control's
+  label shows the line it writes. The edits go through the `yaml`
+  library, which keeps a visitor's comments and key order and reads
+  any YAML form they type. It is a dev dependency, used by the demo
+  only; the package still has no runtime dependencies. The examples
+  are the water cycle and every heading in `docs/GALLERY.md`, and a
+  test keeps the two lists matched. The link holds the example's
+  name, or the visitor's own text once they edit it. The grid of
+  every case moves to `gallery.html`. pele-layout-circular has the
+  same page. The design is in
+  `docs/superpowers/specs/2026-11-26-playground-design.md`.

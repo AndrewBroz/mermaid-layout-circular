@@ -11,8 +11,10 @@ Pele, a smaller program that draws diagrams from the same text, are in
 [pele-layout-circular's gallery](https://github.com/AndrewBroz/pele-layout-circular/blob/main/docs/GALLERY.md).
 
 The pictures are redrawn by `npm run docs:images`. The
-[live gallery](https://andrewbroz.github.io/mermaid-layout-circular/)
-draws them in your browser.
+[live gallery](https://andrewbroz.github.io/mermaid-layout-circular/gallery.html)
+draws them in your browser. In the
+[playground](https://andrewbroz.github.io/mermaid-layout-circular/),
+you can pick any of them and edit it.
 
 ## Shapes
 

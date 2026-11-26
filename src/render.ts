@@ -1,7 +1,8 @@
 import type { InternalHelpers, LayoutData, RenderOptions, SVG } from 'mermaid';
-import { circularLayout, groupBounds, outlinePath } from 'layout-circular';
+import { circularLayout, groupBounds } from 'layout-circular';
 import type {
   CircularLayoutOptions,
+  GroupBand,
   GroupBox,
   GroupPadding,
   LayoutGroupInput,
@@ -99,6 +100,24 @@ export const boxTitleAt = (
   }
   // Half a pixel: closer than that is the middle mermaid uses anyway.
   return Math.abs(box.title.x - box.x) > 0.5 ? { x } : undefined;
+};
+
+/** Two decimals, enough for a path, and no -0 or 6e-15. */
+const num = (v: number): number => Math.round(v * 100) / 100 || 0;
+
+/** A band's outline, an annular sector: the outer arc clockwise, then
+ *  the inner arc back. */
+export const bandPath = (b: GroupBand): string => {
+  const at = (r: number, a: number) =>
+    `${num(b.center.x + r * Math.cos(a))},${num(b.center.y + r * Math.sin(a))}`;
+  const large = b.endAngle - b.startAngle > Math.PI ? 1 : 0;
+  const R = num(b.outerRadius);
+  const outer = `M${at(b.outerRadius, b.startAngle)}A${R},${R} 0 ${large} 1 ${at(b.outerRadius, b.endAngle)}`;
+  if (b.innerRadius <= 0) {
+    return `${outer}L${num(b.center.x)},${num(b.center.y)}Z`;
+  }
+  const r = num(b.innerRadius);
+  return `${outer}L${at(b.innerRadius, b.endAngle)}A${r},${r} 0 ${large} 0 ${at(b.innerRadius, b.startAngle)}Z`;
 };
 
 /** insertEdgeLabel measures the rendered label and records its size
@@ -316,7 +335,7 @@ export const render = async (
           ? `fill:${look.fill};stroke:${look.stroke};stroke-width:${look.strokeWidth};${wall.getAttribute('style') ?? ''}`
           : `fill:${theme?.clusterBkg ?? 'none'};stroke:${theme?.clusterBorder ?? 'currentColor'};stroke-width:1px;`;
       const band = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      band.setAttribute('d', outlinePath(shape.outline));
+      band.setAttribute('d', bandPath(shape));
       band.setAttribute('style', colors);
       el.replaceChild(band, wall);
       el.querySelector(':scope > .cluster-label')?.setAttribute(

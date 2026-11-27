@@ -3,9 +3,9 @@
 A circular layout for mermaid flowcharts.
 
 > [!tip]
-> Try it in the
-[playground](https://andrewbroz.github.io/mermaid-layout-circular/).
-> Pick an example, edit its text, and switch the settings on and off.
+> Try out `mermaid-layout-circular` live in the
+[playground](https://andrewbroz.github.io/mermaid-layout-circular/)!
+> Pick an example, edit the code, and explore the settings.
 
 [mermaid](https://mermaid.js.org) turns text into diagrams. It lays
 out flowcharts in rows, so a cycle comes out as a line with one long

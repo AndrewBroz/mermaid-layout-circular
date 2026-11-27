@@ -2,6 +2,10 @@
 
 A circular layout for mermaid flowcharts.
 
+Try it in the
+[playground](https://andrewbroz.github.io/mermaid-layout-circular/).
+Pick an example, edit its text, and switch the settings on and off.
+
 [mermaid](https://mermaid.js.org) turns text into diagrams. It lays
 out flowcharts in rows, so a cycle comes out as a line with one long
 arrow looping back. This package adds a circular layout. A layout
@@ -39,10 +43,6 @@ mermaid's default layout, called dagre, draws the same text like this:
 
 This answers a request open in mermaid since 2022,
 [mermaid-js/mermaid#3228](https://github.com/mermaid-js/mermaid/issues/3228).
-
-Try it in the
-[playground](https://andrewbroz.github.io/mermaid-layout-circular/).
-Pick an example, edit its text, and switch the settings on and off.
 
 ## Which package to use
 
